@@ -558,8 +558,7 @@ class Compilers(
     if (!userConfig().enableSemanticHighlighting) {
       if (path.isTwirlTemplate) {
         Future { new SemanticTokens(emptyTokens) }
-      }
-      else { // normal scala file
+      } else { // normal scala file
         loadCompiler(path)
           .map { compiler =>
             val (input, _, adjust) =
@@ -610,7 +609,9 @@ class Compilers(
               }
             }
 
-            def adjustForScala3Worksheet(tokens: List[Integer]): List[Integer] = {
+            def adjustForScala3Worksheet(
+                tokens: List[Integer]
+            ): List[Integer] = {
               @tailrec
               @nowarn
               def loop(
@@ -639,7 +640,9 @@ class Compilers(
                       val deltaLen = deltaColumn - 2
                       val adjustedLen: Integer = Math.max(0, len + deltaLen)
                       val adjusted: List[Integer] =
-                        List(deltaLine, deltaColumn, adjustedLen) ++ next.take(2)
+                        List(deltaLine, deltaColumn, adjustedLen) ++ next.take(
+                          2
+                        )
                       loop(
                         next.drop(2),
                         adjusted :: acc,
@@ -647,7 +650,8 @@ class Compilers(
                       )
                     }
                   case deltaLine :: deltaColumn :: next =>
-                    val adjustedColumn: Integer = deltaColumn + adjustColumnDelta
+                    val adjustedColumn: Integer =
+                      deltaColumn + adjustColumnDelta
                     val adjusted: List[Integer] =
                       List(deltaLine, adjustedColumn) ++ next.take(3)
                     loop(
@@ -668,7 +672,8 @@ class Compilers(
                 token,
                 outlineFilesProvider.getOutlineFiles(compiler.buildTargetId()),
               )
-            val isScala3 = ScalaVersions.isScala3Version(compiler.scalaVersion())
+            val isScala3 =
+              ScalaVersions.isScala3Version(compiler.scalaVersion())
 
             compiler
               .semanticTokens(vFile)
@@ -703,8 +708,7 @@ class Compilers(
           }
           .getOrElse(Future.successful(new SemanticTokens(emptyTokens)))
       }
-    }
-    else Future { new SemanticTokens(emptyTokens) }
+    } else Future { new SemanticTokens(emptyTokens) }
   }
 
   def inlayHints(

@@ -1,6 +1,10 @@
 package scala.meta.internal.metals
 
-import org.eclipse.lsp4j.{SemanticTokenModifiers, SemanticTokenTypes, SemanticTokensParams}
+import org.eclipse.lsp4j.{
+  SemanticTokenModifiers,
+  SemanticTokenTypes,
+  SemanticTokensParams,
+}
 
 import play.twirl.parser.TreeNodes.*
 import play.twirl.parser.TwirlParser
@@ -11,23 +15,28 @@ import play.twirl.parser.TwirlParser
  */
 object TwirlSemanticTokensProvider {
   case class Position(
-    line: Int,
-    column: Int,
+      line: Int,
+      column: Int,
   )
 
-  /** A constructed semantic token that contains no delta encoding.
-    */
+  /**
+   * A constructed semantic token that contains no delta encoding.
+   */
   case class SourceTwirlSemanticToken(
-    length: Int,
-    tokenType: Int,
-    tokenModifiers: Int,
-    line: Int,
-    column: Int,
+      length: Int,
+      tokenType: Int,
+      tokenModifiers: Int,
+      line: Int,
+      column: Int,
   ) {
     def getSrcPos: Position = Position(line = line, column = column)
 
-    def deltaEncode(prevToken: DeltaEncodedTwirlSemanticToken): DeltaEncodedTwirlSemanticToken = {
-      println(s"deltaLine=[${prevToken.deltaLine}];deltaStart=[${prevToken.deltaStart}]")
+    def deltaEncode(
+        prevToken: DeltaEncodedTwirlSemanticToken
+    ): DeltaEncodedTwirlSemanticToken = {
+      println(
+        s"deltaLine=[${prevToken.deltaLine}];deltaStart=[${prevToken.deltaStart}]"
+      )
 
       val deltaLine = line - prevToken.deltaLine
 
@@ -48,50 +57,54 @@ object TwirlSemanticTokensProvider {
     }
   }
 
-  /** A case class designed to make it easier to make it easier to construct and convert semantic
-    * tokens to/from their raw representation that is expected by LSP.
-    *
-    * @note
-    *   **THIS CLASS SHOULD NOT BE INSTANTIATED DIRECTLY.** The `encodeDelta(...)` method should be
-    *   used to convert a `SourceTwirlSemanticTokens` to a `DeltaEncodedTwirlSemanticTokens`.
-    */
+  /**
+   * A case class designed to make it easier to make it easier to construct and convert semantic
+   * tokens to/from their raw representation that is expected by LSP.
+   *
+   * @note
+   *   **THIS CLASS SHOULD NOT BE INSTANTIATED DIRECTLY.** The `encodeDelta(...)` method should be
+   *   used to convert a `SourceTwirlSemanticTokens` to a `DeltaEncodedTwirlSemanticTokens`.
+   */
   case class DeltaEncodedTwirlSemanticToken(
-    deltaLine: Int,
-    deltaStart: Int,
-    length: Int,
-    tokenType: Int,
-    tokenModifier: Int,
+      deltaLine: Int,
+      deltaStart: Int,
+      length: Int,
+      tokenType: Int,
+      tokenModifier: Int,
   ) {
-    def toList: List[Int] = List(deltaLine, deltaStart, length, tokenType, tokenModifier)
+    def toList: List[Int] =
+      List(deltaLine, deltaStart, length, tokenType, tokenModifier)
 
-    /** This method will return a `Position` using the delta values defined on the class. It should be
-      * made clear that this will not be the source position.
-      */
+    /**
+     * This method will return a `Position` using the delta values defined on the class. It should be
+     * made clear that this will not be the source position.
+     */
     def toDeltaPos: Position = Position(deltaLine, deltaStart)
   }
 
-  /** The idea is that this class will hold the state for the recursive logic when it comes to
-    * "jumping" between the ASTs.
-    *
-    * @param prevToken
-    *   The previous `SourceTwirlSemanticToken`
-    * @param tokens
-    *   All of the collected semantic tokens thus far
-    */
+  /**
+   * The idea is that this class will hold the state for the recursive logic when it comes to
+   * "jumping" between the ASTs.
+   *
+   * @param prevToken
+   *   The previous `SourceTwirlSemanticToken`
+   * @param tokens
+   *   All of the collected semantic tokens thus far
+   */
   case class State(
-    prevToken: SourceTwirlSemanticToken,
-    tokens: Seq[SourceTwirlSemanticToken],
+      prevToken: SourceTwirlSemanticToken,
+      tokens: Seq[SourceTwirlSemanticToken],
   ) {
     def getPrevPos: Position = prevToken.getSrcPos
   }
 
   object Emitter {
     def resolveTokens(
-      state: State,
-      pos: Position,
-      str: String,
-      tokenType: String,
-      tokenModifier: String,
+        state: State,
+        pos: Position,
+        str: String,
+        tokenType: String,
+        tokenModifier: String,
     ): State = {
       val thisToken = SourceTwirlSemanticToken(
         line = pos.line,
@@ -108,9 +121,9 @@ object TwirlSemanticTokensProvider {
     }
 
     def emitHtml(
-      state: State,
-      pos: Position,
-      str: String,
+        state: State,
+        pos: Position,
+        str: String,
     ): State = {
       println(s"HTML emitted: [$str].")
       Emitter.resolveTokens(
@@ -123,9 +136,9 @@ object TwirlSemanticTokensProvider {
     }
 
     def emitScala(
-      state: State,
-      pos: Position,
-      str: String,
+        state: State,
+        pos: Position,
+        str: String,
     ): State = {
       println(s"Scala emitted: [$str].")
       Emitter.resolveTokens(
@@ -138,9 +151,9 @@ object TwirlSemanticTokensProvider {
     }
 
     def emitComment(
-      state: State,
-      pos: Position,
-      str: String,
+        state: State,
+        pos: Position,
+        str: String,
     ): State =
       Emitter.resolveTokens(
         state,
@@ -150,38 +163,40 @@ object TwirlSemanticTokensProvider {
         tokenModifier = SemanticTokenModifiers.Abstract,
       )
 
-    /** Used for template imports.
-      * @example
-      *   {{{
-      * @import
-      *   java.net.URLEncoder imports=[ArrayBuffer(Simple(import java.net.URLEncoder))]
-      *   }}}
-      * @note
-      *   This will internally call `emitScala(...)` on the specified tokens.
-      */
+    /**
+     * Used for template imports.
+     * @example
+     *   {{{
+     * @import
+     *   java.net.URLEncoder imports=[ArrayBuffer(Simple(import java.net.URLEncoder))]
+     *   }}}
+     * @note
+     *   This will internally call `emitScala(...)` on the specified tokens.
+     */
     def emitImports(
-      state: State,
-      pos: Position,
-      str: String,
+        state: State,
+        pos: Position,
+        str: String,
     ): State = emitScala(state, pos, str)
 
-    /** This is the details that are provided in the `@this(...)` expression in Twirl.
-      * @note
-      *   This will internally call `emitScala(...)` on the specified tokens.
-      * @example
-      *   {{{
-      * @this(main: main)
-      * constructor=[Some(Constructor(None,(main: main)))]
-      *   }}}
-      */
+    /**
+     * This is the details that are provided in the `@this(...)` expression in Twirl.
+     * @note
+     *   This will internally call `emitScala(...)` on the specified tokens.
+     * @example
+     *   {{{
+     * @this(main: main)
+     * constructor=[Some(Constructor(None,(main: main)))]
+     *   }}}
+     */
     def emitConstructor(
-      state: State,
-      pos: Position,
-      str: String,
+        state: State,
+        pos: Position,
+        str: String,
     ): State =
       /**
-        * TODO: This is an unused method.
-        */
+       * TODO: This is an unused method.
+       */
       Emitter.resolveTokens(
         state,
         pos,
@@ -192,9 +207,9 @@ object TwirlSemanticTokensProvider {
 
     /** Emits template header params. */
     def emitParams(
-      state: State,
-      pos: PosString,
-      str: String,
+        state: State,
+        pos: PosString,
+        str: String,
     ): State =
       // Should this just be using emitScala?
       Emitter.resolveTokens(
@@ -209,48 +224,60 @@ object TwirlSemanticTokensProvider {
       )
   }
 
-  /** @author
-    *   Asad Humayun
-    */
+  /**
+   * @author
+   *   Asad Humayun
+   */
   class Traverser {
-    /** This method's purpose is to traverse and identify the Twirl template's metadata.
-      *
-      * @param state
-      * @param template
-      * @param pos
-      * @return
-      */
-    def matchTemplate(state: State, template: BaseTemplate, pos: Position): State = {
 
-      /** Matches common template metadata. This applies to all templates that we might receive and
-        * therefore have to match against & process tokens for.
-        *
-        * Matches and processes `[state, imports, sub, nodes]` of a template.
-        *
-        * @param state
-        *   The state to use.
-        * @param imports
-        *   The imports that are used in this template.
-        * @param members
-        *   The members of this template.
-        * @param sub
-        *   The subtemplates of this template.
-        * @param nodes
-        *   The nodes of this tree.
-        * @return
-        *   State -- the new State for this template.
-        */
-      def matchCommonTemplateMeta(
+    /**
+     * This method's purpose is to traverse and identify the Twirl template's metadata.
+     *
+     * @param state
+     * @param template
+     * @param pos
+     * @return
+     */
+    def matchTemplate(
         state: State,
-        imports: collection.Seq[Simple],
-        members: collection.Seq[LocalMember],
-        sub: collection.Seq[SubTemplate],
-        nodes: collection.Seq[TemplateTree],
+        template: BaseTemplate,
+        pos: Position,
+    ): State = {
+
+      /**
+       * Matches common template metadata. This applies to all templates that we might receive and
+       * therefore have to match against & process tokens for.
+       *
+       * Matches and processes `[state, imports, sub, nodes]` of a template.
+       *
+       * @param state
+       *   The state to use.
+       * @param imports
+       *   The imports that are used in this template.
+       * @param members
+       *   The members of this template.
+       * @param sub
+       *   The subtemplates of this template.
+       * @param nodes
+       *   The nodes of this tree.
+       * @return
+       *   State -- the new State for this template.
+       */
+      def matchCommonTemplateMeta(
+          state: State,
+          imports: collection.Seq[Simple],
+          members: collection.Seq[LocalMember],
+          sub: collection.Seq[SubTemplate],
+          nodes: collection.Seq[TemplateTree],
       ): State = {
-        val importedStates   = imports.foldLeft(state) { (state, import_) =>
-          emitScala(state = state, Position(import_.pos.line, import_.pos.column), import_.code)
+        val importedStates = imports.foldLeft(state) { (state, import_) =>
+          emitScala(
+            state = state,
+            Position(import_.pos.line, import_.pos.column),
+            import_.code,
+          )
         }
-        val membersState     = members.foldLeft(importedStates) { (state, member) =>
+        val membersState = members.foldLeft(importedStates) { (state, member) =>
           emitScala(
             state = state,
             pos = Position(
@@ -271,51 +298,57 @@ object TwirlSemanticTokensProvider {
           )
         }
 
-        nodes.foldLeft(subTemplateState)((state, node) => matchNode(node = node, state = state))
+        nodes.foldLeft(subTemplateState)((state, node) =>
+          matchNode(node = node, state = state)
+        )
       }
 
-      /** A case class representing the data that will be stored once a comment is detected and
-        * extracted from some input `text`.
-        *
-        * @see
-        *   [[Traverser.getCommentNodes]]
-        */
+      /**
+       * A case class representing the data that will be stored once a comment is detected and
+       * extracted from some input `text`.
+       *
+       * @see
+       *   [[Traverser.getCommentNodes]]
+       */
       case class CommentSrcPos(
-        pos: Position,
-        str: String,
+          pos: Position,
+          str: String,
       ) {
 
-        /** @TODO:
-          *   Figure out as to whether this actually works...
-          *
-          * @param lineOffset
-          * @return
-          */
+        /**
+         * @TODO:
+         *   Figure out as to whether this actually works...
+         *
+         * @param lineOffset
+         * @return
+         */
         def getSourceToken(lineOffset: Int): SourceTwirlSemanticToken =
           SourceTwirlSemanticToken(
             length = this.str.length,
-            tokenType = SemanticTokensService.types.resolve(SemanticTokenTypes.Comment),
-            tokenModifiers =
-              SemanticTokensService.modifiers.resolve(SemanticTokenModifiers.Documentation),
+            tokenType =
+              SemanticTokensService.types.resolve(SemanticTokenTypes.Comment),
+            tokenModifiers = SemanticTokensService.modifiers.resolve(
+              SemanticTokenModifiers.Documentation
+            ),
             line = this.pos.line + lineOffset,
             column = this.pos.column,
           )
       }
       def getCommentNodes(text: String): List[CommentSrcPos] = {
         case class BeginRegionMarker(
-          pos: Position,
-          rawSrcPos: Int,
+            pos: Position,
+            rawSrcPos: Int,
         )
         sealed trait ScannerModes
         case object Text extends ScannerModes
         case object BlockComment extends ScannerModes
         case object TwirlComment extends ScannerModes
         case object Ignore extends ScannerModes
-        var rawSrcPos                              = 0
-        var pos: Position                          = Position(1, 0)
+        var rawSrcPos = 0
+        var pos: Position = Position(1, 0)
         var beginRegion: Option[BeginRegionMarker] = None
-        var mode: ScannerModes                     = ScannerModes.Text
-        var comments: List[CommentSrcPos]          = List()
+        var mode: ScannerModes = ScannerModes.Text
+        var comments: List[CommentSrcPos] = List()
 
         def moveCursorForwardByOne(): Unit = {
           rawSrcPos = rawSrcPos + 1
@@ -334,10 +367,10 @@ object TwirlSemanticTokensProvider {
                 line = pos.line + 1,
                 column = 0,
               )
-            case _: String      => Nil
+            case _: String => Nil
           }
           mode match {
-            case ScannerModes.Text         =>
+            case ScannerModes.Text =>
               char match {
                 // received normal text; continue matching until start of
                 // either a line comment, block comment, or twirl comment
@@ -345,7 +378,9 @@ object TwirlSemanticTokensProvider {
                   text.charAt(rawSrcPos + 1).toLower.toString match {
                     case y if y == "*" =>
                       // We are now inside a block comment.
-                      beginRegion = Some(BeginRegionMarker(pos = pos, rawSrcPos = rawSrcPos))
+                      beginRegion = Some(
+                        BeginRegionMarker(pos = pos, rawSrcPos = rawSrcPos)
+                      )
                       mode = ScannerModes.BlockComment
                       moveCursorForwardByOne()
                     case y if y == "/" =>
@@ -363,7 +398,7 @@ object TwirlSemanticTokensProvider {
                             )
                           )
                           rawSrcPos = text.length
-                        case _: Int       =>
+                        case _: Int =>
                           comments = comments.appended(
                             CommentSrcPos(
                               pos = pos,
@@ -372,18 +407,20 @@ object TwirlSemanticTokensProvider {
                           )
                           rawSrcPos = endIndex + 1
                       }
-                    case _: String     => moveCursorForwardByOne()
+                    case _: String => moveCursorForwardByOne()
                   }
                 case x if x == "@" => // check if we are in an @* comment block... and set mode.
                   text.charAt(rawSrcPos + 1).toLower.toString match {
                     case y if y == "*" =>
                       // We are now inside a twirl block comment.
-                      beginRegion = Some(BeginRegionMarker(pos = pos, rawSrcPos = rawSrcPos))
+                      beginRegion = Some(
+                        BeginRegionMarker(pos = pos, rawSrcPos = rawSrcPos)
+                      )
                       mode = ScannerModes.TwirlComment
                       moveCursorForwardByOne()
-                    case _: String     => moveCursorForwardByOne()
+                    case _: String => moveCursorForwardByOne()
                   }
-                case _: String     => moveCursorForwardByOne()
+                case _: String => moveCursorForwardByOne()
               }
             case ScannerModes.TwirlComment =>
               text.charAt(rawSrcPos).toLower.toString match {
@@ -394,13 +431,16 @@ object TwirlSemanticTokensProvider {
                       comments = comments.appended(
                         CommentSrcPos(
                           pos = beginRegion.get.pos,
-                          str = text.substring(beginRegion.get.rawSrcPos, rawSrcPos + 2),
+                          str = text.substring(
+                            beginRegion.get.rawSrcPos,
+                            rawSrcPos + 2,
+                          ),
                         )
                       )
                       beginRegion = None
-                    case _: String     => moveCursorForwardByOne()
+                    case _: String => moveCursorForwardByOne()
                   }
-                case _: String     => moveCursorForwardByOne()
+                case _: String => moveCursorForwardByOne()
               }
             case ScannerModes.BlockComment =>
               text.charAt(rawSrcPos).toLower.toString match {
@@ -411,35 +451,47 @@ object TwirlSemanticTokensProvider {
                       comments = comments.appended(
                         CommentSrcPos(
                           pos = beginRegion.get.pos,
-                          str = text.substring(beginRegion.get.rawSrcPos, rawSrcPos + 2),
+                          str = text.substring(
+                            beginRegion.get.rawSrcPos,
+                            rawSrcPos + 2,
+                          ),
                         )
                       )
                       beginRegion = None
-                    case _: String     => moveCursorForwardByOne()
+                    case _: String => moveCursorForwardByOne()
                   }
-                case _: String     => moveCursorForwardByOne()
+                case _: String => moveCursorForwardByOne()
               }
-            case ScannerModes.Ignore       => moveCursorForwardByOne()
+            case ScannerModes.Ignore => moveCursorForwardByOne()
           }
         }
         comments
       }
 
       template match {
-        case BlockTemplate(imports, members, sub, nodes)                                      =>
+        case BlockTemplate(imports, members, sub, nodes) =>
           matchCommonTemplateMeta(state, imports, members, sub, nodes)
-        case SubTemplate(declaration, name, params, imports, members, sub, nodes)             =>
-          val namePos            = Position(line = name.pos.line, column = name.pos.column)
-          val declaredState      = declaration match {
+        case SubTemplate(
+              declaration,
+              name,
+              params,
+              imports,
+              members,
+              sub,
+              nodes,
+            ) =>
+          val namePos = Position(line = name.pos.line, column = name.pos.column)
+          val declaredState = declaration match {
             case Left(isVarOrDef) =>
               isVarOrDef match {
-                case true       => // var
+                case true => // var
                   Emitter.resolveTokens(
                     state = state,
                     pos = namePos,
                     str = name.str,
                     tokenType = SemanticTokenTypes.Variable,
-                    tokenModifier = "0", // a workaround to give no token modifier
+                    tokenModifier =
+                      "0", // a workaround to give no token modifier
                   )
                 case _: Boolean => // def
                   Emitter.resolveTokens(
@@ -452,7 +504,7 @@ object TwirlSemanticTokensProvider {
               }
             case Right(isLazyVal) =>
               isLazyVal match {
-                case true       => // lazy val
+                case true => // lazy val
                   Emitter.resolveTokens(
                     state = state,
                     pos = namePos,
@@ -485,7 +537,16 @@ object TwirlSemanticTokensProvider {
             sub = sub,
             nodes = nodes,
           )
-        case Template(constructor, comment, params, topImports, imports, members, sub, nodes) =>
+        case Template(
+              constructor,
+              comment,
+              params,
+              topImports,
+              imports,
+              members,
+              sub,
+              nodes,
+            ) =>
           val constructorState = constructor match {
             case Some(constructor) =>
               Emitter.resolveTokens(
@@ -495,20 +556,21 @@ object TwirlSemanticTokensProvider {
                 tokenType = SemanticTokenTypes.Parameter,
                 tokenModifier = SemanticTokenModifiers.Declaration,
               )
-            case None        => state
+            case None => state
           }
-          val commentState     = comment match {
+          val commentState = comment match {
             case Some(value) =>
               Emitter.resolveTokens(
                 state = constructorState,
-                pos = Position(line = value.pos.line, column = value.pos.column),
+                pos =
+                  Position(line = value.pos.line, column = value.pos.column),
                 str = value.msg,
                 tokenType = SemanticTokenTypes.Comment,
                 tokenModifier = SemanticTokenModifiers.Documentation,
               )
-            case None        => constructorState
+            case None => constructorState
           }
-          val paramsState      = emitScala(
+          val paramsState = emitScala(
             state = commentState,
             pos = Position(line = params.pos.line, column = params.pos.column),
             str = params.str,
@@ -526,16 +588,20 @@ object TwirlSemanticTokensProvider {
             case Some(constructor) =>
               println(s"CONSTRUCTOR STR=[${constructor.params.str}]")
 
-              val paramsText   = constructor.params.str
+              val paramsText = constructor.params.str
               val commentNodes = getCommentNodes(paramsText).map { comment =>
-                println(s"[commentNodes#map]: Detected comment [${comment.str}] inside constructor.")
+                println(
+                  s"[commentNodes#map]: Detected comment [${comment.str}] inside constructor."
+                )
                 comment.getSourceToken(topImportsStates.prevToken.line)
               }
 
               State(
                 prevToken = SourceTwirlSemanticToken(
                   length = params.str.length,
-                  tokenType = SemanticTokensService.types.resolve(SemanticTokenTypes.Parameter),
+                  tokenType = SemanticTokensService.types.resolve(
+                    SemanticTokenTypes.Parameter
+                  ),
                   tokenModifiers = 0,
                   line = params.pos.line,
                   column = params.pos.column,
@@ -543,9 +609,9 @@ object TwirlSemanticTokensProvider {
                 tokens = topImportsStates.tokens ++ commentNodes,
               )
 
-              // constructor.comment match
-              // case Some(value) => ???
-              // case None => ???
+            // constructor.comment match
+            // case Some(value) => ???
+            // case None => ???
             case None => topImportsStates
           }
 
@@ -560,15 +626,19 @@ object TwirlSemanticTokensProvider {
     }
 
     def matchNode(node: TemplateTree, state: State): State = {
-      def traverseReassignment(state: State, ref: Either[SubTemplate, Var]): State = {
+      def traverseReassignment(
+          state: State,
+          ref: Either[SubTemplate, Var],
+      ): State = {
         ref match {
           case Left(template) =>
             matchTemplate(
               state = state,
               template = template,
-              pos = Position(line = template.pos.line, column = template.pos.column),
+              pos =
+                Position(line = template.pos.line, column = template.pos.column),
             )
-          case Right(var_)    =>
+          case Right(var_) =>
             // Just emit everything as Scala and then let Metals provide
             // the semantic tokens for this - I could go and do it myself
             // but there is not really much of a point in doing that if Metals
@@ -583,12 +653,16 @@ object TwirlSemanticTokensProvider {
             )
         }
       }
-      def traverseScalaExp(state: State, scalaExp: ScalaExp): State                = {
+      def traverseScalaExp(state: State, scalaExp: ScalaExp): State = {
         scalaExp.parts.foldLeft(state)(traverseScalaExpPart)
       }
-      def traverseBlock(state: State, block: Block): State                         = {
+      def traverseBlock(state: State, block: Block): State = {
         val tokens =
-          matchTemplate(state, block.contents, Position(block.pos.line, block.pos.column)).tokens
+          matchTemplate(
+            state,
+            block.contents,
+            Position(block.pos.line, block.pos.column),
+          ).tokens
         State(
           prevToken = state.prevToken,
           tokens,
@@ -597,24 +671,25 @@ object TwirlSemanticTokensProvider {
 
       def traverseScalaExpPart(state: State, part: ScalaExpPart): State = {
         part match {
-          case simple   @ Simple(code)                     =>
+          case simple @ Simple(code) =>
             emitScala(
               state = state,
               pos = Position(simple.pos.line, simple.pos.column),
               str = code,
             )
-          case block    @ Block(whitespace, args, template) => traverseBlock(state, block)
+          case block @ Block(whitespace, args, template) =>
+            traverseBlock(state, block)
         }
       }
 
       node match {
-        case comment @ Comment(msg)       =>
+        case comment @ Comment(msg) =>
           emitComment(
             state,
             pos = Position(comment.pos.line, comment.pos.column),
             str = msg,
           )
-        case plain @ Plain(text)          =>
+        case plain @ Plain(text) =>
           emitHtml(
             state,
             pos = Position(
@@ -624,26 +699,32 @@ object TwirlSemanticTokensProvider {
             str = text,
             // TODO: Hand this off to an HTML parser instead?
           )
-        case display @ Display(exp)       => traverseScalaExp(state, exp)
+        case display @ Display(exp) => traverseScalaExp(state, exp)
         case reassign @ Reassignment(ref) => traverseReassignment(state, ref)
         // for scalaExp, foldLeft onto it
-        case scalaExp @ ScalaExp(parts)   => traverseScalaExp(state = state, scalaExp = scalaExp)
-        case _: TemplateTree              => ???
+        case scalaExp @ ScalaExp(parts) =>
+          traverseScalaExp(state = state, scalaExp = scalaExp)
+        case _: TemplateTree => ???
       }
     }
 
-    /** This function should loop over the nodes and then send them back.
+    /**
+     * This function should loop over the nodes and then send them back.
      */
     def provideSemanticTokens(template: Template) = {
-      val nodes  = template.content
+      val nodes = template.content
       val tokens = matchTemplate(
-        state = State(prevToken = SourceTwirlSemanticToken(0, 0, 0, 0, 0), tokens = Seq()),
+        state = State(
+          prevToken = SourceTwirlSemanticToken(0, 0, 0, 0, 0),
+          tokens = Seq(),
+        ),
         template = template,
         pos = Position(1, 0),
       ).tokens
         .sortBy(token => (token.line, token.column))
-        .foldLeft(List(DeltaEncodedTwirlSemanticToken(0, 0, 0, 0, 0))) { (prev, curr) =>
-          prev.appended(curr.deltaEncode(prev.last))
+        .foldLeft(List(DeltaEncodedTwirlSemanticToken(0, 0, 0, 0, 0))) {
+          (prev, curr) =>
+            prev.appended(curr.deltaEncode(prev.last))
         }
 
       println(
@@ -653,20 +734,24 @@ object TwirlSemanticTokensProvider {
 
     def getTwirlTemplateSemanticTokens(params: SemanticTokensParams) = {
       val document = params.getTextDocument
-      val content  = openFile(document.getUri)
-      val parser   = new TwirlParser(shouldParseInclusiveDot = true)
-      val Success  = parser.Success
-      val Error    = parser.Error
+      val content = openFile(document.getUri)
+      val parser = new TwirlParser(shouldParseInclusiveDot = true)
+      val Success = parser.Success
+      val Error = parser.Error
 
       println(s"[getTwirl] Attempting to parse Twirl template source...")
 
       parser.parse(content) match {
-        case Success(template, input)       =>
+        case Success(template, input) =>
           provideSemanticTokens(template)
-          TwirlOutput(template, input, Option.empty).write(Paths.successCase.toString)
+          TwirlOutput(template, input, Option.empty).write(
+            Paths.successCase.toString
+          )
         case Error(template, input, errors) =>
           println(s"[getTwirl] Errors parsing template")
-          TwirlOutput(template, input, Option(errors)).write(Paths.errorCase.toString)
+          TwirlOutput(template, input, Option(errors)).write(
+            Paths.errorCase.toString
+          )
       }
     }
   }
