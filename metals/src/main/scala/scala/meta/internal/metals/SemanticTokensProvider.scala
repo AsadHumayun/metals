@@ -22,8 +22,6 @@ import scala.meta.tokens._
 import org.eclipse.lsp4j.SemanticTokenModifiers
 import org.eclipse.lsp4j.SemanticTokenTypes
 
-import play.twirl.parser.TreeNodes.PosString
-
 /**
  *  Provides semantic tokens of file
  *  according to the LSP specification.
