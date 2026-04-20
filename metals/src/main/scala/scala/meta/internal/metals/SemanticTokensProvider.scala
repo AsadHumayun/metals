@@ -22,6 +22,8 @@ import scala.meta.tokens._
 import org.eclipse.lsp4j.SemanticTokenModifiers
 import org.eclipse.lsp4j.SemanticTokenTypes
 
+import play.twirl.parser.TreeNodes.PosString
+
 /**
  *  Provides semantic tokens of file
  *  according to the LSP specification.
@@ -757,5 +759,129 @@ object TwirlSemanticTokensProvider {
     tokens: Seq[SourceTwirlSemanticToken],
   ) {
     def getPrevPos: Position = prevToken.getSrcPos
+  }
+
+  object Emitter {
+    def resolveTokens(
+      state: State,
+      pos: Position,
+      str: String,
+      tokenType: String,
+      tokenModifier: String,
+    ): State = {
+      val thisToken = SourceTwirlSemanticToken(
+        line = pos.line,
+        column = pos.column,
+        length = str.length,
+        tokenType = SemanticTokensService.types.resolve(tokenType),
+        tokenModifiers = SemanticTokensService.modifiers.resolve(tokenModifier),
+      )
+
+      State(
+        prevToken = thisToken,
+        tokens = state.tokens.appended(thisToken),
+      )
+    }
+
+    def emitHtml(
+      state: State,
+      pos: Position,
+      str: String,
+    ): State = {
+      println(s"HTML emitted: [$str].")
+      resolveTokens(
+        state,
+        pos,
+        str,
+        tokenType = SemanticTokenTypes.String,
+        tokenModifier = SemanticTokenModifiers.Static,
+      )
+    }
+
+    def emitScala(
+      state: State,
+      pos: Position,
+      str: String,
+    ): State = {
+      println(s"Scala emitted: [$str].")
+      resolveTokens(
+        state,
+        pos,
+        str,
+        tokenType = SemanticTokenTypes.Method,
+        tokenModifier = SemanticTokenModifiers.Async,
+      )
+    }
+
+    def emitComment(
+      state: State,
+      pos: Position,
+      str: String,
+    ): State =
+      resolveTokens(
+        state,
+        pos,
+        str,
+        tokenType = SemanticTokenTypes.Enum,
+        tokenModifier = SemanticTokenModifiers.Abstract,
+      )
+
+    /** Used for template imports.
+      * @example
+      *   {{{
+      * @import
+      *   java.net.URLEncoder imports=[ArrayBuffer(Simple(import java.net.URLEncoder))]
+      *   }}}
+      * @note
+      *   This will internally call `emitScala(...)` on the specified tokens.
+      */
+    def emitImports(
+      state: State,
+      pos: Position,
+      str: String,
+    ): State = emitScala(state, pos, str)
+
+    /** This is the details that are provided in the `@this(...)` expression in Twirl.
+      * @note
+      *   This will internally call `emitScala(...)` on the specified tokens.
+      * @example
+      *   {{{
+      * @this(main: main)
+      * constructor=[Some(Constructor(None,(main: main)))]
+      *   }}}
+      */
+    def emitConstructor(
+      state: State,
+      pos: Position,
+      str: String,
+    ): State =
+      /**
+        * TODO: This is an unused method.
+        */
+      resolveTokens(
+        state,
+        pos,
+        str,
+        tokenType = SemanticTokenTypes.Comment,
+        tokenModifier = SemanticTokenModifiers.Documentation,
+      )
+
+    /** Emits template header params. */
+    def emitParams(
+      state: State,
+      pos: PosString,
+      str: String,
+    ): State =
+      // Should this just be using emitScala?
+      resolveTokens(
+        state,
+        pos = Position(
+          line = pos.pos.line,
+          column = pos.pos.column,
+        ),
+        str,
+        tokenType = SemanticTokenTypes.Comment,
+        tokenModifier = SemanticTokenModifiers.Documentation,
+      )
   }
 }
