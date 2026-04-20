@@ -554,153 +554,157 @@ class Compilers(
   ): Future[SemanticTokens] = {
     val path = params.getTextDocument.getUri.toAbsolutePath
     val emptyTokens = ju.Collections.emptyList[Integer]();
-    if (!userConfig().enableSemanticHighlighting || path.isTwirlTemplate) {
-      Future { new SemanticTokens(emptyTokens) }
-    } else {
-      loadCompiler(path)
-        .map { compiler =>
-          val (input, _, adjust) =
-            sourceAdjustments(
-              params.getTextDocument().getUri(),
-              compiler.scalaVersion(),
-            )
 
-          /**
-           * Find the start that is actually contained in the file and not
-           * in the added parts such as imports in sbt.
-           *
-           * @param line line within the adjusted source
-           * @param character line within the adjusted source
-           * @param remaining the rest of the tokens to analyze
-           * @return the first found that should be contained with the rest
-           */
-          @tailrec
-          def findCorrectStart(
-              line: Integer,
-              character: Integer,
-              remaining: List[Integer],
-          ): List[Integer] = {
-            remaining match {
-              case lineDelta :: charDelta :: next =>
-                val newCharacter: Integer =
-                  // only increase character delta if the same line
-                  if (lineDelta == 0) character + charDelta
-                  else charDelta
+    if (!userConfig().enableSemanticHighlighting) {
+      if (path.isTwirlTemplate) {
+        Future { new SemanticTokens(emptyTokens) }
+      }
+      else { // normal scala file
+        loadCompiler(path)
+          .map { compiler =>
+            val (input, _, adjust) =
+              sourceAdjustments(
+                params.getTextDocument().getUri(),
+                compiler.scalaVersion(),
+              )
 
-                val adjustedTokenPos = adjust.adjustPos(
-                  new LspPosition(line + lineDelta, newCharacter),
-                  adjustToZero = false,
-                )
-                if (
-                  adjustedTokenPos.getLine() >= 0 &&
-                  adjustedTokenPos.getCharacter() >= 0
-                )
-                  (adjustedTokenPos.getLine(): Integer) ::
-                    (adjustedTokenPos.getCharacter(): Integer) :: next
-                else
-                  findCorrectStart(
-                    line + lineDelta,
-                    newCharacter,
-                    next.drop(3),
-                  )
-              case _ => Nil
-            }
-          }
-
-          def adjustForScala3Worksheet(tokens: List[Integer]): List[Integer] = {
+            /**
+             * Find the start that is actually contained in the file and not
+             * in the added parts such as imports in sbt.
+             *
+             * @param line line within the adjusted source
+             * @param character line within the adjusted source
+             * @param remaining the rest of the tokens to analyze
+             * @return the first found that should be contained with the rest
+             */
             @tailrec
-            @nowarn
-            def loop(
+            def findCorrectStart(
+                line: Integer,
+                character: Integer,
                 remaining: List[Integer],
-                acc: List[List[Integer]],
-                adjustColumnDelta: Int =
-                  0, // after multiline string we need to adjust column delta of the next token in line
             ): List[Integer] = {
               remaining match {
-                case Nil => acc.reverse.flatten
-                // we need to remove additional indent
-                case deltaLine :: deltaColumn :: len :: next
-                    if deltaLine != 0 =>
-                  if (deltaColumn - 2 >= 0) {
-                    val adjustedColumn: Integer = deltaColumn - 2
-                    val adjusted: List[Integer] =
-                      List(deltaLine, adjustedColumn, len) ++ next.take(2)
-                    loop(
-                      next.drop(2),
-                      adjusted :: acc,
-                    )
-                  }
-                  // for multiline strings, we highlight the entire line inluding leading whitespace
-                  // so we need to adjust the length after removing additional indent
-                  else {
-                    val deltaLen = deltaColumn - 2
-                    val adjustedLen: Integer = Math.max(0, len + deltaLen)
-                    val adjusted: List[Integer] =
-                      List(deltaLine, deltaColumn, adjustedLen) ++ next.take(2)
-                    loop(
-                      next.drop(2),
-                      adjusted :: acc,
-                      deltaLen,
-                    )
-                  }
-                case deltaLine :: deltaColumn :: next =>
-                  val adjustedColumn: Integer = deltaColumn + adjustColumnDelta
-                  val adjusted: List[Integer] =
-                    List(deltaLine, adjustedColumn) ++ next.take(3)
-                  loop(
-                    next.drop(3),
-                    adjusted :: acc,
+                case lineDelta :: charDelta :: next =>
+                  val newCharacter: Integer =
+                    // only increase character delta if the same line
+                    if (lineDelta == 0) character + charDelta
+                    else charDelta
+
+                  val adjustedTokenPos = adjust.adjustPos(
+                    new LspPosition(line + lineDelta, newCharacter),
+                    adjustToZero = false,
                   )
+                  if (
+                    adjustedTokenPos.getLine() >= 0 &&
+                    adjustedTokenPos.getCharacter() >= 0
+                  )
+                    (adjustedTokenPos.getLine(): Integer) ::
+                      (adjustedTokenPos.getCharacter(): Integer) :: next
+                  else
+                    findCorrectStart(
+                      line + lineDelta,
+                      newCharacter,
+                      next.drop(3),
+                    )
+                case _ => Nil
               }
             }
 
-            // Delta for first token was already adjusted in `findCorrectStart`
-            loop(tokens.drop(5), List(tokens.take(5)))
-          }
-
-          val vFile =
-            CompilerVirtualFileParams(
-              path.toNIO.toUri(),
-              input.text,
-              token,
-              outlineFilesProvider.getOutlineFiles(compiler.buildTargetId()),
-            )
-          val isScala3 = ScalaVersions.isScala3Version(compiler.scalaVersion())
-
-          compiler
-            .semanticTokens(vFile)
-            .asScala
-            .map { nodes =>
-              val plist =
-                try {
-                  SemanticTokensProvider.provide(
-                    nodes.asScala.toList,
-                    vFile,
-                    path,
-                    isScala3,
-                    trees,
-                  )
-                } catch {
-                  case NonFatal(e) =>
-                    scribe.error(
-                      s"Failed to tokenize input for semantic tokens for $path",
-                      e,
+            def adjustForScala3Worksheet(tokens: List[Integer]): List[Integer] = {
+              @tailrec
+              @nowarn
+              def loop(
+                  remaining: List[Integer],
+                  acc: List[List[Integer]],
+                  adjustColumnDelta: Int =
+                    0, // after multiline string we need to adjust column delta of the next token in line
+              ): List[Integer] = {
+                remaining match {
+                  case Nil => acc.reverse.flatten
+                  // we need to remove additional indent
+                  case deltaLine :: deltaColumn :: len :: next
+                      if deltaLine != 0 =>
+                    if (deltaColumn - 2 >= 0) {
+                      val adjustedColumn: Integer = deltaColumn - 2
+                      val adjusted: List[Integer] =
+                        List(deltaLine, adjustedColumn, len) ++ next.take(2)
+                      loop(
+                        next.drop(2),
+                        adjusted :: acc,
+                      )
+                    }
+                    // for multiline strings, we highlight the entire line inluding leading whitespace
+                    // so we need to adjust the length after removing additional indent
+                    else {
+                      val deltaLen = deltaColumn - 2
+                      val adjustedLen: Integer = Math.max(0, len + deltaLen)
+                      val adjusted: List[Integer] =
+                        List(deltaLine, deltaColumn, adjustedLen) ++ next.take(2)
+                      loop(
+                        next.drop(2),
+                        adjusted :: acc,
+                        deltaLen,
+                      )
+                    }
+                  case deltaLine :: deltaColumn :: next =>
+                    val adjustedColumn: Integer = deltaColumn + adjustColumnDelta
+                    val adjusted: List[Integer] =
+                      List(deltaLine, adjustedColumn) ++ next.take(3)
+                    loop(
+                      next.drop(3),
+                      adjusted :: acc,
                     )
-                    Nil
                 }
-
-              val tokens =
-                findCorrectStart(0, 0, plist.toList)
-              if (isScala3 && path.isWorksheet) {
-                new SemanticTokens(adjustForScala3Worksheet(tokens).asJava)
-              } else {
-                new SemanticTokens(tokens.asJava)
               }
-            }
-        }
-        .getOrElse(Future.successful(new SemanticTokens(emptyTokens)))
-    }
 
+              // Delta for first token was already adjusted in `findCorrectStart`
+              loop(tokens.drop(5), List(tokens.take(5)))
+            }
+
+            val vFile =
+              CompilerVirtualFileParams(
+                path.toNIO.toUri(),
+                input.text,
+                token,
+                outlineFilesProvider.getOutlineFiles(compiler.buildTargetId()),
+              )
+            val isScala3 = ScalaVersions.isScala3Version(compiler.scalaVersion())
+
+            compiler
+              .semanticTokens(vFile)
+              .asScala
+              .map { nodes =>
+                val plist =
+                  try {
+                    SemanticTokensProvider.provide(
+                      nodes.asScala.toList,
+                      vFile,
+                      path,
+                      isScala3,
+                      trees,
+                    )
+                  } catch {
+                    case NonFatal(e) =>
+                      scribe.error(
+                        s"Failed to tokenize input for semantic tokens for $path",
+                        e,
+                      )
+                      Nil
+                  }
+
+                val tokens =
+                  findCorrectStart(0, 0, plist.toList)
+                if (isScala3 && path.isWorksheet) {
+                  new SemanticTokens(adjustForScala3Worksheet(tokens).asJava)
+                } else {
+                  new SemanticTokens(tokens.asJava)
+                }
+              }
+          }
+          .getOrElse(Future.successful(new SemanticTokens(emptyTokens)))
+      }
+    }
+    else Future { new SemanticTokens(emptyTokens) }
   }
 
   def inlayHints(
