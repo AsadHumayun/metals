@@ -466,8 +466,8 @@ lazy val metals = project
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.21.1",
       "io.undertow" % "undertow-servlet" % "2.3.12.Final",
       // For Twirl
-      "org.playframework.twirl" %% "twirl-compiler"     % "2.1.0-M8",
-			"org.playframework.twirl" %% "twirl-parser" 			% "2.1.0-M8",
+      "org.playframework.twirl" %% "twirl-compiler" % "2.1.0-M8",
+      "org.playframework.twirl" %% "twirl-parser" % "2.1.0-M8",
     ),
     buildInfoPackage := "scala.meta.internal.metals",
     buildInfoKeys := Seq[BuildInfoKey](

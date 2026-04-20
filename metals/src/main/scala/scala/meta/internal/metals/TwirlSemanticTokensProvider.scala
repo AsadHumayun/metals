@@ -270,10 +270,14 @@ object TwirlSemanticTokensProvider {
           sub: collection.Seq[SubTemplate],
           nodes: collection.Seq[TemplateTree],
       ): State = {
-        val importedStates   = imports.foldLeft(state) { (state, import_) =>
-          Emitter.emitScala(state = state, Position(import_.pos.line, import_.pos.column), import_.code)
+        val importedStates = imports.foldLeft(state) { (state, import_) =>
+          Emitter.emitScala(
+            state = state,
+            Position(import_.pos.line, import_.pos.column),
+            import_.code,
+          )
         }
-        val membersState     = members.foldLeft(importedStates) { (state, member) =>
+        val membersState = members.foldLeft(importedStates) { (state, member) =>
           Emitter.emitScala(
             state = state,
             pos = Position(
@@ -343,8 +347,8 @@ object TwirlSemanticTokensProvider {
         var rawSrcPos = 0
         var pos: Position = Position(1, 0)
         var beginRegion: Option[BeginRegionMarker] = None
-        var mode: ScannerModes                     = Text
-        var comments: List[CommentSrcPos]          = List()
+        var mode: ScannerModes = Text
+        var comments: List[CommentSrcPos] = List()
 
         def moveCursorForwardByOne(): Unit = {
           rawSrcPos = rawSrcPos + 1
@@ -366,7 +370,7 @@ object TwirlSemanticTokensProvider {
             case _: String => Nil
           }
           mode match {
-            case Text         =>
+            case Text =>
               char match {
                 // received normal text; continue matching until start of
                 // either a line comment, block comment, or twirl comment
@@ -374,7 +378,9 @@ object TwirlSemanticTokensProvider {
                   text.charAt(rawSrcPos + 1).toLower.toString match {
                     case y if y == "*" =>
                       // We are now inside a block comment.
-                      beginRegion = Some(BeginRegionMarker(pos = pos, rawSrcPos = rawSrcPos))
+                      beginRegion = Some(
+                        BeginRegionMarker(pos = pos, rawSrcPos = rawSrcPos)
+                      )
                       mode = BlockComment
                       moveCursorForwardByOne()
                     case y if y == "/" =>
@@ -407,7 +413,9 @@ object TwirlSemanticTokensProvider {
                   text.charAt(rawSrcPos + 1).toLower.toString match {
                     case y if y == "*" =>
                       // We are now inside a twirl block comment.
-                      beginRegion = Some(BeginRegionMarker(pos = pos, rawSrcPos = rawSrcPos))
+                      beginRegion = Some(
+                        BeginRegionMarker(pos = pos, rawSrcPos = rawSrcPos)
+                      )
                       mode = TwirlComment
                       moveCursorForwardByOne()
                     case _: String => moveCursorForwardByOne()
@@ -454,7 +462,7 @@ object TwirlSemanticTokensProvider {
                   }
                 case _: String => moveCursorForwardByOne()
               }
-            case Ignore       => moveCursorForwardByOne()
+            case Ignore => moveCursorForwardByOne()
           }
         }
         comments
@@ -562,19 +570,20 @@ object TwirlSemanticTokensProvider {
               )
             case None => constructorState
           }
-          val paramsState      = Emitter.emitScala(
+          val paramsState = Emitter.emitScala(
             state = commentState,
             pos = Position(line = params.pos.line, column = params.pos.column),
             str = params.str,
           )
-          val topImportsStates = topImports.foldLeft(paramsState) { (state__, top) =>
-            Emitter.resolveTokens(
-              state = state__,
-              pos = Position(line = top.pos.line, column = top.pos.column),
-              str = top.code,
-              tokenType = SemanticTokenTypes.Namespace,
-              tokenModifier = SemanticTokenModifiers.Modification,
-            )
+          val topImportsStates = topImports.foldLeft(paramsState) {
+            (state__, top) =>
+              Emitter.resolveTokens(
+                state = state__,
+                pos = Position(line = top.pos.line, column = top.pos.column),
+                str = top.code,
+                tokenType = SemanticTokenTypes.Namespace,
+                tokenModifier = SemanticTokenModifiers.Modification,
+              )
           }
           val constructorEmittedState = constructor match {
             case Some(constructor) =>
@@ -663,7 +672,7 @@ object TwirlSemanticTokensProvider {
 
       def traverseScalaExpPart(state: State, part: ScalaExpPart): State = {
         part match {
-          case simple   @ Simple(code)                     =>
+          case simple @ Simple(code) =>
             Emitter.emitScala(
               state = state,
               pos = Position(simple.pos.line, simple.pos.column),
@@ -675,13 +684,13 @@ object TwirlSemanticTokensProvider {
       }
 
       node match {
-        case comment @ Comment(msg)       =>
+        case comment @ Comment(msg) =>
           Emitter.emitComment(
             state,
             pos = Position(comment.pos.line, comment.pos.column),
             str = msg,
           )
-        case plain @ Plain(text)          =>
+        case plain @ Plain(text) =>
           Emitter.emitHtml(
             state,
             pos = Position(
@@ -691,8 +700,8 @@ object TwirlSemanticTokensProvider {
             str = text,
             // TODO: Hand this off to an HTML parser instead?
           )
-        case Display(exp)       => traverseScalaExp(state, exp)
-        case Reassignment(ref)  => traverseReassignment(state, ref)
+        case Display(exp) => traverseScalaExp(state, exp)
+        case Reassignment(ref) => traverseReassignment(state, ref)
         // for scalaExp, foldLeft onto it
         case scalaExp @ ScalaExp(parts) =>
           traverseScalaExp(state = state, scalaExp = scalaExp)
@@ -726,10 +735,10 @@ object TwirlSemanticTokensProvider {
 
     def getTwirlTemplateSemanticTokens(params: SemanticTokensParams) = {
       val document = params.getTextDocument
-      val content  = ???
-      val parser   = new TwirlParser(shouldParseInclusiveDot = true)
-      val Success  = parser.Success
-      val Error    = parser.Error
+      val content = ???
+      val parser = new TwirlParser(shouldParseInclusiveDot = true)
+      val Success = parser.Success
+      val Error = parser.Error
 
       println(s"[getTwirl] Attempting to parse Twirl template source...")
 
