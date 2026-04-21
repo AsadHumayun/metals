@@ -34,7 +34,7 @@ object TwirlSemanticTokensProvider {
     def deltaEncode(
         prevToken: DeltaEncodedTwirlSemanticToken
     ): DeltaEncodedTwirlSemanticToken = {
-      println(
+      println( // TODO: remove debug statement
         s"deltaLine=[${prevToken.deltaLine}];deltaStart=[${prevToken.deltaStart}]"
       )
 
@@ -62,7 +62,7 @@ object TwirlSemanticTokensProvider {
    * tokens to/from their raw representation that is expected by LSP.
    *
    * @note
-   *   **THIS CLASS SHOULD NOT BE INSTANTIATED DIRECTLY.** The `encodeDelta(...)` method should be
+   *   **This class should not be instantiated directly for creating delta tokens.** The `encodeDelta(...)` method should be
    *   used to convert a `SourceTwirlSemanticTokens` to a `DeltaEncodedTwirlSemanticTokens`.
    */
   case class DeltaEncodedTwirlSemanticToken(
@@ -126,6 +126,7 @@ object TwirlSemanticTokensProvider {
         str: String,
     ): State = {
       println(s"HTML emitted: [$str].")
+      // TODO: to let the TextMate grammar, just return state unchanged here.
       Emitter.resolveTokens(
         state,
         pos,
