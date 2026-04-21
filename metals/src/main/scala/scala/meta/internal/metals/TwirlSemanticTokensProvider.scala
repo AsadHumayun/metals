@@ -1,12 +1,11 @@
 package scala.meta.internal.metals
 
-import org.eclipse.lsp4j.{
-  SemanticTokenModifiers,
-  SemanticTokenTypes,
-  SemanticTokensParams,
-}
+import scala.meta.internal.pc.SemanticTokens
 
-import play.twirl.parser.TreeNodes.*
+import org.eclipse.lsp4j.SemanticTokenModifiers
+import org.eclipse.lsp4j.SemanticTokenTypes
+import org.eclipse.lsp4j.SemanticTokensParams
+import play.twirl.parser.TreeNodes._
 import play.twirl.parser.TwirlParser
 
 /**
@@ -110,8 +109,8 @@ object TwirlSemanticTokensProvider {
         line = pos.line,
         column = pos.column,
         length = str.length,
-        tokenType = SemanticTokensService.types.resolve(tokenType),
-        tokenModifiers = SemanticTokensService.modifiers.resolve(tokenModifier),
+        tokenType = SemanticTokens.getTypeId(tokenType),
+        tokenModifiers = SemanticTokens.getModifierId(tokenModifier),
       )
 
       State(
@@ -142,6 +141,7 @@ object TwirlSemanticTokensProvider {
         str: String,
     ): State = {
       println(s"Scala emitted: [$str].")
+      // TODO: Call the current semantic tokens impl for Scala.
       Emitter.resolveTokens(
         state,
         pos,
@@ -327,8 +327,8 @@ object TwirlSemanticTokensProvider {
           SourceTwirlSemanticToken(
             length = this.str.length,
             tokenType =
-              SemanticTokensService.types.resolve(SemanticTokenTypes.Comment),
-            tokenModifiers = SemanticTokensService.modifiers.resolve(
+              SemanticTokens.getTypeId(SemanticTokenTypes.Comment),
+            tokenModifiers = SemanticTokens.getModifierId(
               SemanticTokenModifiers.Documentation
             ),
             line = this.pos.line + lineOffset,
@@ -492,7 +492,7 @@ object TwirlSemanticTokensProvider {
                     str = name.str,
                     tokenType = SemanticTokenTypes.Variable,
                     tokenModifier =
-                      "0", // a workaround to give no token modifier
+                      "0", // TODO: a workaround to give no token modifier
                   )
                 case _: Boolean => // def
                   Emitter.resolveTokens(
@@ -601,7 +601,7 @@ object TwirlSemanticTokensProvider {
               State(
                 prevToken = SourceTwirlSemanticToken(
                   length = params.str.length,
-                  tokenType = SemanticTokensService.types.resolve(
+                  tokenType = SemanticTokens.getTypeId(
                     SemanticTokenTypes.Parameter
                   ),
                   tokenModifiers = 0,
@@ -611,6 +611,7 @@ object TwirlSemanticTokensProvider {
                 tokens = topImportsStates.tokens ++ commentNodes,
               )
 
+            // TODO: need to apply semantic tokens for constructor comments...
             // constructor.comment match
             // case Some(value) => ???
             // case None => ???
@@ -679,7 +680,7 @@ object TwirlSemanticTokensProvider {
               pos = Position(simple.pos.line, simple.pos.column),
               str = code,
             )
-          case block @ Block(whitespace, args, template) =>
+          case block @ Block(whitespace, args, _) =>
             traverseBlock(state, block)
         }
       }
@@ -691,18 +692,9 @@ object TwirlSemanticTokensProvider {
             pos = Position(comment.pos.line, comment.pos.column),
             str = msg,
           )
-        case plain @ Plain(text) =>
-          Emitter.emitHtml(
-            state,
-            pos = Position(
-              line = plain.pos.line,
-              column = plain.pos.column,
-            ),
-            str = text,
-            // TODO: Hand this off to an HTML parser instead?
-          )
-        case Display(exp) => traverseScalaExp(state, exp)
-        case Reassignment(ref) => traverseReassignment(state, ref)
+        case Plain(text)        => state // do not emit tokens, let tmLanguage remain
+        case Display(exp)       => traverseScalaExp(state, exp)
+        case Reassignment(ref)  => traverseReassignment(state, ref)
         // for scalaExp, foldLeft onto it
         case scalaExp @ ScalaExp(parts) =>
           traverseScalaExp(state = state, scalaExp = scalaExp)
@@ -713,9 +705,9 @@ object TwirlSemanticTokensProvider {
     /**
      * This function should loop over the nodes and then send them back.
      */
-    def provideSemanticTokens(template: Template) = {
-      val nodes = template.content
-      val tokens = matchTemplate(
+    def provideSemanticTokens(template: Template): Unit = {
+      template.content
+      matchTemplate(
         state = State(
           prevToken = SourceTwirlSemanticToken(0, 0, 0, 0, 0),
           tokens = Seq(),
@@ -734,8 +726,8 @@ object TwirlSemanticTokensProvider {
       )
     }
 
-    def getTwirlTemplateSemanticTokens(params: SemanticTokensParams) = {
-      val document = params.getTextDocument
+    def getTwirlTemplateSemanticTokens(params: SemanticTokensParams): Unit = {
+      params.getTextDocument
       val content = ???
       val parser = new TwirlParser(shouldParseInclusiveDot = true)
       val Success = parser.Success
