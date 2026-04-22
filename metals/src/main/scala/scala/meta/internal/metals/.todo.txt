@@ -1,3 +1,0 @@
-Things to figure out on Metals:
-- how do I handle passing around semantic tokens on their codebase?
-- 
