@@ -70,6 +70,8 @@ import org.eclipse.lsp4j.{Position => LspPosition}
 import org.eclipse.lsp4j.{Range => LspRange}
 import org.eclipse.lsp4j.{debug => d}
 
+import play.twirl.parser.TwirlParser
+
 /**
  * Manages lifecycle for presentation compilers in all build targets.
  *
@@ -557,8 +559,30 @@ class Compilers(
 
     if (!userConfig().enableSemanticHighlighting) {
       if (path.isTwirlTemplate) {
-        Future { new SemanticTokens(emptyTokens) }
-      } else { // normal scala file
+        if (path.isTwirlHTMLTemplate) {
+          params.getTextDocument.getUri
+          val content = ??? // TODO: this should be the file's contents.
+          val parser = new TwirlParser(shouldParseInclusiveDot = true)
+          val Success = parser.Success
+          val Error = parser.Error
+
+          scribe.info(s"[getTwirl] Attempting to parse Twirl template source...")
+
+          parser.parse(content) match {
+            case Success(template, input) =>
+              Future.successful(
+                new SemanticTokens(TwirlSemanticTokensProvider.provide(template).asJava)
+              )
+            case Error(template, input, errors) =>
+              // TODO: Add diagnostics reporting here - want to get it done here
+              // so that we do not have to compile each Twirl template twice.
+              scribe.info(s"[getTwirl] Errors parsing template")
+              Future { new SemanticTokens(emptyTokens) }
+          }
+        } else { // not HTML Twirl template
+          Future { new SemanticTokens(emptyTokens) }
+        }
+      } else {
         loadCompiler(path)
           .map { compiler =>
             val (input, _, adjust) =
