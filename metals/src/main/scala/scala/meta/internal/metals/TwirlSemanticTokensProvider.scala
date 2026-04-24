@@ -70,7 +70,9 @@ object TwirlSemanticTokensProvider {
       tokenModifier: Int,
   ) {
     def toList: List[Integer] =
-      List(deltaLine, deltaStart, length, tokenType, tokenModifier).map(f => new Integer(f))
+      List(deltaLine, deltaStart, length, tokenType, tokenModifier).map(f =>
+        new Integer(f)
+      )
 
     /**
      * This method will return a `Position` using the delta values defined on the class. It should be
@@ -538,8 +540,7 @@ object TwirlSemanticTokensProvider {
           case Some(value) =>
             Emitter.resolveTokens(
               state = constructorState,
-              pos =
-                Position(line = value.pos.line, column = value.pos.column),
+              pos = Position(line = value.pos.line, column = value.pos.column),
               str = value.msg,
               tokenType = SemanticTokenTypes.Comment,
               tokenModifier = SemanticTokenModifiers.Documentation,
@@ -674,21 +675,22 @@ object TwirlSemanticTokensProvider {
       // for scalaExp, foldLeft onto it
       case scalaExp @ ScalaExp(parts) =>
         traverseScalaExp(state = state, scalaExp = scalaExp)
-      case _: TemplateTree => ??? // TODO: Should be able to remove this case - should be unreachable...?
+      case _: TemplateTree =>
+        ??? // TODO: Should be able to remove this case - should be unreachable...?
     }
   }
 
   /**
-    * This is the core method that will handle the main tree traversal of the
-    * Twirl Abstract Syntax Tree (AST). This function will traverse the tree,
-    * sort its nodes, delta encode them, and return them in accordance with
-    * the LSP specification.
-    *
-    * @param template   The template to traverse, obtained by parsing the Twirl
-    *                   file using `TwirlParser`.
-    * @return           The flattened, delta-encoded source tokens, ready to be
-    *                   provided to the IDE.
-    */
+   * This is the core method that will handle the main tree traversal of the
+   * Twirl Abstract Syntax Tree (AST). This function will traverse the tree,
+   * sort its nodes, delta encode them, and return them in accordance with
+   * the LSP specification.
+   *
+   * @param template   The template to traverse, obtained by parsing the Twirl
+   *                   file using `TwirlParser`.
+   * @return           The flattened, delta-encoded source tokens, ready to be
+   *                   provided to the IDE.
+   */
   def provide(template: Template): List[Integer] =
     matchTemplate(
       state = State(

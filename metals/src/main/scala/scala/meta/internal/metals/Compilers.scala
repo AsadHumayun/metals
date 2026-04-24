@@ -69,7 +69,6 @@ import org.eclipse.lsp4j.jsonrpc.messages.{Either => JEither}
 import org.eclipse.lsp4j.{Position => LspPosition}
 import org.eclipse.lsp4j.{Range => LspRange}
 import org.eclipse.lsp4j.{debug => d}
-
 import play.twirl.parser.TwirlParser
 
 /**
@@ -565,12 +564,16 @@ class Compilers(
           val Success = parser.Success
           val Error = parser.Error
 
-          scribe.info(s"[getTwirl] Attempting to parse Twirl template source...")
+          scribe.info(
+            s"[getTwirl] Attempting to parse Twirl template source..."
+          )
 
           parser.parse(content) match {
             case Success(template, input) =>
               Future.successful(
-                new SemanticTokens(TwirlSemanticTokensProvider.provide(template).asJava)
+                new SemanticTokens(
+                  TwirlSemanticTokensProvider.provide(template).asJava
+                )
               )
             case Error(template, input, errors) =>
               // TODO: Add diagnostics reporting here - want to get it done here
