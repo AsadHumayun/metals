@@ -560,8 +560,7 @@ class Compilers(
     if (!userConfig().enableSemanticHighlighting) {
       if (path.isTwirlTemplate) {
         if (path.isTwirlHTMLTemplate) {
-          params.getTextDocument.getUri
-          val content = ??? // TODO: this should be the file's contents.
+          val content = ??? // TODO: figure out how to open/read from file
           val parser = new TwirlParser(shouldParseInclusiveDot = true)
           val Success = parser.Success
           val Error = parser.Error
