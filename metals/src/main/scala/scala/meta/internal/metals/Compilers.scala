@@ -558,28 +558,40 @@ class Compilers(
 
     if (!userConfig().enableSemanticHighlighting) {
       if (path.isTwirlTemplate) {
+        scribe.info(">>>>>>TRYING TO READ PLAY TWIRL.....")
         if (path.isTwirlHTMLTemplate) {
-          val content = ??? // TODO: figure out how to open/read from file
+          scribe.info(
+            s">>>>>>>>>>>>>\nTwirl Template: Attempting to parse semantic tokens..."
+          )
+          val content = buffers.get(path)
           val parser = new TwirlParser(shouldParseInclusiveDot = true)
           val Success = parser.Success
           val Error = parser.Error
 
           scribe.info(
-            s"[getTwirl] Attempting to parse Twirl template source..."
+            "[getTwirl] Attempting to parse Twirl template source..."
           )
 
-          parser.parse(content) match {
-            case Success(template, input) =>
-              Future.successful(
-                new SemanticTokens(
-                  TwirlSemanticTokensProvider.provide(template).asJava
-                )
+          content match {
+            case Some(text) => {
+              scribe.info(
+                s"Getting semantic tokens for twirlTokens [$text]."
               )
-            case Error(template, input, errors) =>
-              // TODO: Add diagnostics reporting here - want to get it done here
-              // so that we do not have to compile each Twirl template twice.
-              scribe.info(s"[getTwirl] Errors parsing template")
-              Future { new SemanticTokens(emptyTokens) }
+              parser.parse(text) match {
+                case Success(template, input) =>
+                  Future.successful(
+                    new SemanticTokens(
+                      TwirlSemanticTokensProvider.provide(template).asJava
+                    )
+                  )
+                case Error(template, input, errors) =>
+                  // TODO: Add diagnostics reporting here - want to get it done here
+                  // so that we do not have to compile each Twirl template twice.
+                  scribe.info(s"[getTwirl] Errors parsing template")
+                  Future { new SemanticTokens(emptyTokens) }
+              }
+            }
+            case None => Future { new SemanticTokens(emptyTokens) }
           }
         } else { // not HTML Twirl template
           Future { new SemanticTokens(emptyTokens) }
