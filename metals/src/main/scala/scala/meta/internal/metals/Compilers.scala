@@ -69,7 +69,6 @@ import org.eclipse.lsp4j.jsonrpc.messages.{Either => JEither}
 import org.eclipse.lsp4j.{Position => LspPosition}
 import org.eclipse.lsp4j.{Range => LspRange}
 import org.eclipse.lsp4j.{debug => d}
-import play.twirl.parser.TwirlParser // todo: move to the function it's used in
 
 /**
  * Manages lifecycle for presentation compilers in all build targets.
@@ -553,6 +552,8 @@ class Compilers(
       params: SemanticTokensParams,
       token: CancelToken,
   ): Future[SemanticTokens] = {
+    import play.twirl.parser.TwirlParser
+
     val path = params.getTextDocument.getUri.toAbsolutePath
     val emptyTokens = ju.Collections.emptyList[Integer]();
 
@@ -1502,7 +1503,7 @@ class Compilers(
       .await
   }
 
-  private def wloadCompiler(
+  private def loadCompiler(
       targetId: BuildTargetIdentifier
   ): Option[PresentationCompiler] =
     withKeyAndDefault(targetId) { case (key, getCompiler) =>
