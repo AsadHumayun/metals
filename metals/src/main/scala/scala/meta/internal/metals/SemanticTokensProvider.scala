@@ -74,7 +74,7 @@ object SemanticTokensProvider {
   }
 
   /**
-   * Main method.  Fist, Codes are convert to Scala.Meta.Tokens.
+   * Main method.  First, Codes are convert to Scala.Meta.Tokens.
    * And a semantic token, which is composed by 5 Ints
    * are provided for each meta-token. If a meta-token is
    * Idenitifier, the attributes (e.g. constant or not)

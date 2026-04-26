@@ -87,7 +87,7 @@ class WorksheetProvider(
   // first-come last-out.
   private val jobs = CompilerJobQueue()
   // Executor for stopping threads. We don't reuse the scheduled executor from
-  // MetalsLanguageServer because this exector service may occasionally block
+  // MetalsLanguageServer because this executor service may occasionally block
   // and we don't want to block on other features like the status bar.
   private lazy val threadStopper: ScheduledExecutorService =
     Executors.newSingleThreadScheduledExecutor()
