@@ -69,7 +69,7 @@ import org.eclipse.lsp4j.jsonrpc.messages.{Either => JEither}
 import org.eclipse.lsp4j.{Position => LspPosition}
 import org.eclipse.lsp4j.{Range => LspRange}
 import org.eclipse.lsp4j.{debug => d}
-import play.twirl.parser.TwirlParser
+import play.twirl.parser.TwirlParser // todo: move to the function it's used in
 
 /**
  * Manages lifecycle for presentation compilers in all build targets.
@@ -557,7 +557,8 @@ class Compilers(
     val emptyTokens = ju.Collections.emptyList[Integer]();
 
     if (!userConfig().enableSemanticHighlighting) {
-      if (path.isTwirlTemplate) {
+      Future { new SemanticTokens(emptyTokens) }
+    } else if (path.isTwirlTemplate) {
         scribe.info(">>>>>>TRYING TO READ PLAY TWIRL.....")
         if (path.isTwirlHTMLTemplate) {
           scribe.info(
@@ -591,9 +592,13 @@ class Compilers(
                   Future { new SemanticTokens(emptyTokens) }
               }
             }
-            case None => Future { new SemanticTokens(emptyTokens) }
+            case None => {
+              scribe.info("[Info] Twirl template file opened, but no content was picked up (`buffers.get` returned None)")
+              Future { new SemanticTokens(emptyTokens) }
+            }
           }
         } else { // not HTML Twirl template
+          scribe.info("[Info] Semantic highlighting for non-HTML Twirl templates are not supported. Returning empty semantic tokens")
           Future { new SemanticTokens(emptyTokens) }
         }
       } else {
@@ -746,8 +751,7 @@ class Compilers(
           }
           .getOrElse(Future.successful(new SemanticTokens(emptyTokens)))
       }
-    } else Future { new SemanticTokens(emptyTokens) }
-  }
+    }
 
   def inlayHints(
       params: InlayHintParams,
@@ -1498,7 +1502,7 @@ class Compilers(
       .await
   }
 
-  private def loadCompiler(
+  private def wloadCompiler(
       targetId: BuildTargetIdentifier
   ): Option[PresentationCompiler] =
     withKeyAndDefault(targetId) { case (key, getCompiler) =>
