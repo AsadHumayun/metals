@@ -1,10 +1,16 @@
 package scala.meta.internal.metals
 
+import scala.meta.internal.metals.CompilerVirtualFileParams
 import scala.meta.internal.pc.SemanticTokens
+import scala.meta.pc.PresentationCompiler
 
 import org.eclipse.lsp4j.SemanticTokenModifiers
 import org.eclipse.lsp4j.SemanticTokenTypes
 import play.twirl.parser.TreeNodes._
+import scala.meta.inputs.Input.VirtualFile
+import scala.meta.io.AbsolutePath
+import java.net.URI
+import scala.meta.internal.metals.MetalsEnrichments.XtensionJavaFuture
 
 /**
  *  Provides semantic tokens of Twirl files
@@ -97,7 +103,10 @@ object TwirlSemanticTokensProvider {
     def getPrevPos: Position = prevToken.getSrcPos
   }
 
-  object Emitter {
+  class Emitter(
+    compiler: PresentationCompiler,
+    path: AbsolutePath
+  ) {
     def resolveTokens(
         state: State,
         pos: Position,
@@ -126,13 +135,30 @@ object TwirlSemanticTokensProvider {
     ): State = {
       scribe.info(s"Scala emitted: [$str].")
       // TODO: Call the current semantic tokens impl for Scala.
-      Emitter.resolveTokens(
-        state,
-        pos,
-        str,
-        tokenType = SemanticTokenTypes.Method,
-        tokenModifier = SemanticTokenModifiers.Async,
+
+    /**
+      * Things I need to do:
+        - Get VirtualFileParams set up
+        - Load PC & get semanticdbTokens
+        - then somehow map these positions back to Twirl positions
+      * This method also still needs to return a State
+      */
+
+      val vFile = CompilerVirtualFileParams(
+        // can have multiple Scala snippets per Twirl file, so need to use line/col here
+        uri = URI.create(s"metals://twirl-vfile-scala-snippet/${path.toNIO}/${pos.line}-${pos.column}"),
+        text = str,
       )
+
+      compiler
+        .semanticTokens(vFile)
+        .asScala
+        .map { nodes =>
+          scribe.info(s"[emitScala] Semantic tokens extracted from compiler: [$tkns]")
+        }
+
+
+      ???
     }
 
     def emitComment(
@@ -140,7 +166,7 @@ object TwirlSemanticTokensProvider {
         pos: Position,
         str: String,
     ): State =
-      Emitter.resolveTokens(
+      resolveTokens(
         state,
         pos,
         str,
@@ -162,7 +188,8 @@ object TwirlSemanticTokensProvider {
         state: State,
         pos: Position,
         str: String,
-    ): State = emitScala(state, pos, str)
+        // just let the tmLanguage do the imports
+    ): State = state
 
     /**
      * This is the details that are provided in the `@this(...)` expression in Twirl.
@@ -182,7 +209,7 @@ object TwirlSemanticTokensProvider {
       /**
        * TODO: This is an unused method.
        */
-      Emitter.resolveTokens(
+      resolveTokens(
         state,
         pos,
         str,
@@ -197,7 +224,7 @@ object TwirlSemanticTokensProvider {
         str: String,
     ): State =
       // Should this just be using emitScala?
-      Emitter.resolveTokens(
+      resolveTokens(
         state,
         pos = Position(
           line = pos.pos.line,
@@ -221,6 +248,7 @@ object TwirlSemanticTokensProvider {
       state: State,
       template: BaseTemplate,
       pos: Position,
+      emitter: Emitter,
   ): State = {
 
     /**
@@ -250,14 +278,14 @@ object TwirlSemanticTokensProvider {
         nodes: collection.Seq[TemplateTree],
     ): State = {
       val importedStates = imports.foldLeft(state) { (state, import_) =>
-        Emitter.emitScala(
-          state = state,
+        emitter.emitScala(
+          state,
           Position(import_.pos.line, import_.pos.column),
           import_.code,
         )
       }
       val membersState = members.foldLeft(importedStates) { (state, member) =>
-        Emitter.emitScala(
+        emitter.emitScala(
           state = state,
           pos = Position(
             line = member.pos.line,
@@ -274,11 +302,12 @@ object TwirlSemanticTokensProvider {
             line = sub.pos.line,
             column = sub.pos.column,
           ),
+          emitter = emitter
         )
       }
 
       nodes.foldLeft(subTemplateState)((state, node) =>
-        matchNode(node = node, state = state)
+        matchNode(node = node, state = state, emitter = emitter)
       )
     }
 
@@ -463,7 +492,7 @@ object TwirlSemanticTokensProvider {
           case Left(isVarOrDef) =>
             isVarOrDef match {
               case true => // var
-                Emitter.resolveTokens(
+                emitter.resolveTokens(
                   state = state,
                   pos = namePos,
                   str = name.str,
@@ -472,7 +501,7 @@ object TwirlSemanticTokensProvider {
                     "0", // TODO: a workaround to give no token modifier
                 )
               case _: Boolean => // def
-                Emitter.resolveTokens(
+                emitter.resolveTokens(
                   state = state,
                   pos = namePos,
                   str = name.str,
@@ -483,7 +512,7 @@ object TwirlSemanticTokensProvider {
           case Right(isLazyVal) =>
             isLazyVal match {
               case true => // lazy val
-                Emitter.resolveTokens(
+                emitter.resolveTokens(
                   state = state,
                   pos = namePos,
                   str = name.str,
@@ -491,7 +520,7 @@ object TwirlSemanticTokensProvider {
                   tokenModifier = SemanticTokenModifiers.Readonly,
                 )
               case _: Boolean => // eager val
-                Emitter.resolveTokens(
+                emitter.resolveTokens(
                   state = state,
                   pos = namePos,
                   str = name.str,
@@ -500,7 +529,7 @@ object TwirlSemanticTokensProvider {
                 )
             }
         }
-        val scalaEmittedState = Emitter.emitScala(
+        val scalaEmittedState = emitter.emitScala(
           state = declaredState,
           pos = Position(
             line = params.pos.line,
@@ -527,7 +556,7 @@ object TwirlSemanticTokensProvider {
           ) =>
         val constructorState = constructor match {
           case Some(constructor) =>
-            Emitter.resolveTokens(
+            emitter.resolveTokens(
               state = state,
               pos = pos,
               str = constructor.params.str,
@@ -538,7 +567,7 @@ object TwirlSemanticTokensProvider {
         }
         val commentState = comment match {
           case Some(value) =>
-            Emitter.resolveTokens(
+            emitter.resolveTokens(
               state = constructorState,
               pos = Position(line = value.pos.line, column = value.pos.column),
               str = value.msg,
@@ -547,14 +576,14 @@ object TwirlSemanticTokensProvider {
             )
           case None => constructorState
         }
-        val paramsState = Emitter.emitScala(
+        val paramsState = emitter.emitScala(
           state = commentState,
           pos = Position(line = params.pos.line, column = params.pos.column),
           str = params.str,
         )
         val topImportsStates = topImports.foldLeft(paramsState) {
           (state__, top) =>
-            Emitter.resolveTokens(
+            emitter.resolveTokens(
               state = state__,
               pos = Position(line = top.pos.line, column = top.pos.column),
               str = top.code,
@@ -604,7 +633,7 @@ object TwirlSemanticTokensProvider {
     }
   }
 
-  def matchNode(node: TemplateTree, state: State): State = {
+  def matchNode(node: TemplateTree, state: State, emitter: Emitter): State = {
     def traverseReassignment(
         state: State,
         ref: Either[SubTemplate, Var],
@@ -616,13 +645,14 @@ object TwirlSemanticTokensProvider {
             template = template,
             pos =
               Position(line = template.pos.line, column = template.pos.column),
+            emitter = emitter
           )
         case Right(var_) =>
           // Just emit everything as Scala and then let Metals provide
           // the semantic tokens for this - I could go and do it myself
           // but there is not really much of a point in doing that if Metals
           // can just go ahead and do it for us anyway
-          Emitter.emitScala(
+          emitter.emitScala(
             state = state,
             pos = Position(
               line = var_.pos.line,
@@ -642,6 +672,7 @@ object TwirlSemanticTokensProvider {
           state,
           block.contents,
           Position(block.pos.line, block.pos.column),
+          emitter = emitter
         ).tokens
       State(
         prevToken = state.prevToken,
@@ -652,7 +683,7 @@ object TwirlSemanticTokensProvider {
     def traverseScalaExpPart(state: State, part: ScalaExpPart): State = {
       part match {
         case simple @ Simple(code) =>
-          Emitter.emitScala(
+          emitter.emitScala(
             state = state,
             pos = Position(simple.pos.line, simple.pos.column),
             str = code,
@@ -664,7 +695,7 @@ object TwirlSemanticTokensProvider {
 
     node match {
       case comment @ Comment(msg) =>
-        Emitter.emitComment(
+        emitter.emitComment(
           state,
           pos = Position(comment.pos.line, comment.pos.column),
           str = msg,
@@ -691,7 +722,7 @@ object TwirlSemanticTokensProvider {
    * @return           The flattened, delta-encoded source tokens, ready to be
    *                   provided to the IDE.
    */
-  def provide(template: Template): List[Integer] =
+  def provide(template: Template, compiler: PresentationCompiler, path: AbsolutePath): List[Integer] =
     matchTemplate(
       state = State(
         prevToken = SourceTwirlSemanticToken(0, 0, 0, 0, 0),
@@ -699,6 +730,7 @@ object TwirlSemanticTokensProvider {
       ),
       template = template,
       pos = Position(1, 0),
+      emitter = new Emitter(compiler, path),
     ).tokens
       .sortBy(token => (token.line, token.column))
       .foldLeft(List(DeltaEncodedTwirlSemanticToken(0, 0, 0, 0, 0))) {
