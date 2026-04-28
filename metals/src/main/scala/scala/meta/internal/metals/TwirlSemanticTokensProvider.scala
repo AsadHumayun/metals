@@ -1,16 +1,22 @@
 package scala.meta.internal.metals
 
+import java.net.URI
+import java.{util => ju}
+
+import scala.concurrent.ExecutionContextExecutorService
+
 import scala.meta.internal.metals.CompilerVirtualFileParams
 import scala.meta.internal.pc.SemanticTokens
+import scala.meta.io.AbsolutePath
 import scala.meta.pc.PresentationCompiler
 
 import org.eclipse.lsp4j.SemanticTokenModifiers
 import org.eclipse.lsp4j.SemanticTokenTypes
 import play.twirl.parser.TreeNodes._
-import scala.meta.inputs.Input.VirtualFile
-import scala.meta.io.AbsolutePath
-import java.net.URI
+import scala.meta.pc.CancelToken
 import scala.meta.internal.metals.MetalsEnrichments.XtensionJavaFuture
+
+import play.twirl.compiler.TwirlCompiler
 
 /**
  *  Provides semantic tokens of Twirl files
@@ -35,20 +41,17 @@ object TwirlSemanticTokensProvider {
     def getSrcPos: Position = Position(line = line, column = column)
 
     def deltaEncode(
-        prevToken: DeltaEncodedTwirlSemanticToken
+        prevToken: SourceTwirlSemanticToken
     ): DeltaEncodedTwirlSemanticToken = {
       scribe.info( // TODO: remove debug statement
-        s"deltaLine=[${prevToken.deltaLine}];deltaStart=[${prevToken.deltaStart}]"
+        s"deltaLine=[${prevToken.line}];deltaStart=[${prevToken.column}]"
       )
 
-      val deltaLine = line - prevToken.deltaLine
-
+      val deltaLine = line - prevToken.line
       // relative to 0 or the previous token’s start if they are on the same line
       val deltaStart =
-        if (deltaLine == 0)
-          column - prevToken.deltaStart
-        else
-          column
+        if (deltaLine == 0) column - prevToken.column
+        else column
 
       DeltaEncodedTwirlSemanticToken(
         deltaLine = deltaLine,
@@ -132,7 +135,7 @@ object TwirlSemanticTokensProvider {
         state: State,
         pos: Position,
         str: String,
-    ): State = {
+    )(implicit ec: ExecutionContextExecutorService, rc: ReportContext, ct: CancelToken): State = {
       scribe.info(s"Scala emitted: [$str].")
       // TODO: Call the current semantic tokens impl for Scala.
 
@@ -146,19 +149,31 @@ object TwirlSemanticTokensProvider {
 
       val vFile = CompilerVirtualFileParams(
         // can have multiple Scala snippets per Twirl file, so need to use line/col here
-        uri = URI.create(s"metals://twirl-vfile-scala-snippet/${path.toNIO}/${pos.line}-${pos.column}"),
+        uri = URI.create(s"metals://twirl-vfile-scala-snippet${path.toNIO}${pos.line}/${pos.column}"),
         text = str,
       )
+
+      scribe.info(s"[emitScala] Setting up vFile params, uri=[${vFile.uri.toString()}]")
 
       compiler
         .semanticTokens(vFile)
         .asScala
         .map { nodes =>
-          scribe.info(s"[emitScala] Semantic tokens extracted from compiler: [$tkns]")
+          scribe.info(
+            s"[getTwirl][emitScala][compile] nodes:[${nodes}] for text=[$str]"
+          )
         }
 
+      // compiler
+      //   .semanticTokens(vFile)
+      //   .map(_.asScala)
 
-      ???
+      //   .map { nodes =>
+      //     scribe.info(s"[emitScala] Semantic tokens extracted from compiler: [$nodes]")
+      //   }
+
+
+      state
     }
 
     def emitComment(
@@ -249,7 +264,7 @@ object TwirlSemanticTokensProvider {
       template: BaseTemplate,
       pos: Position,
       emitter: Emitter,
-  ): State = {
+  )(implicit ec: ExecutionContextExecutorService, rc: ReportContext, ct: CancelToken): State = {
 
     /**
      * Matches common template metadata. This applies to all templates that we might receive and
@@ -633,7 +648,8 @@ object TwirlSemanticTokensProvider {
     }
   }
 
-  def matchNode(node: TemplateTree, state: State, emitter: Emitter): State = {
+  def matchNode(node: TemplateTree, state: State, emitter: Emitter)
+               (implicit ec: ExecutionContextExecutorService, rc: ReportContext, ct: CancelToken): State = {
     def traverseReassignment(
         state: State,
         ref: Either[SubTemplate, Var],
@@ -722,7 +738,8 @@ object TwirlSemanticTokensProvider {
    * @return           The flattened, delta-encoded source tokens, ready to be
    *                   provided to the IDE.
    */
-  def provide(template: Template, compiler: PresentationCompiler, path: AbsolutePath): List[Integer] =
+  def provide (template: Template, compiler: PresentationCompiler, path: AbsolutePath)
+              (implicit ec: ExecutionContextExecutorService, rc: ReportContext, ct: CancelToken): List[Integer] =
     matchTemplate(
       state = State(
         prevToken = SourceTwirlSemanticToken(0, 0, 0, 0, 0),
@@ -733,9 +750,11 @@ object TwirlSemanticTokensProvider {
       emitter = new Emitter(compiler, path),
     ).tokens
       .sortBy(token => (token.line, token.column))
-      .foldLeft(List(DeltaEncodedTwirlSemanticToken(0, 0, 0, 0, 0))) {
-        (prev, curr) =>
-          prev.appended(curr.deltaEncode(prev.last))
+      .foldLeft((SourceTwirlSemanticToken(0, 0, 0, 0, 0), List.empty[DeltaEncodedTwirlSemanticToken])) {
+        case ((prev, acc), curr) =>
+          val encoded = curr.deltaEncode(prev)
+          (curr, acc.appended(encoded))
       }
+      ._2
       .flatMap(token => token.toList)
 }

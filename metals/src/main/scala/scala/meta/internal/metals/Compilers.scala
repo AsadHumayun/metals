@@ -566,7 +566,7 @@ class Compilers(
             s">>>>>>>>>>>>>\nTwirl Template: Attempting to parse semantic tokens..."
           )
           val content = buffers.get(path)
-          val parser = new TwirlParser(shouldParseInclusiveDot = true)
+          val parser = new TwirlParser(shouldParseInclusiveDot = false)
           val Success = parser.Success
           val Error = parser.Error
 
@@ -583,6 +583,7 @@ class Compilers(
                   )
                   parser.parse(text) match {
                     case Success(template, input) =>
+                      implicit val ct = token
                       Future.successful(
                         new SemanticTokens(
                           TwirlSemanticTokensProvider.provide(template, compiler, path)
