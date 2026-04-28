@@ -576,20 +576,27 @@ class Compilers(
 
           content match {
             case Some(text) => {
-              scribe.info(
-                s"Getting semantic tokens for twirlTokens [$text]."
-              )
-              parser.parse(text) match {
-                case Success(template, input) =>
-                  Future.successful(
-                    new SemanticTokens(
-                      TwirlSemanticTokensProvider.provide(template).asJava
-                    )
+              loadCompiler(path) match {
+                case Some(compiler) =>
+                  scribe.info(
+                    s"Getting semantic tokens for twirlTokens [$text]."
                   )
-                case Error(template, input, errors) =>
-                  // TODO: Add diagnostics reporting here - want to get it done here
-                  // so that we do not have to compile each Twirl template twice.
-                  scribe.info(s"[getTwirl] Errors parsing template")
+                  parser.parse(text) match {
+                    case Success(template, input) =>
+                      Future.successful(
+                        new SemanticTokens(
+                          TwirlSemanticTokensProvider.provide(template, compiler, path)
+                            .asJava
+                        )
+                      )
+                    case Error(template, input, errors) =>
+                      // TODO: Add diagnostics reporting here - want to get it done here
+                      // so that we do not have to compile each Twirl template twice.
+                      scribe.info(s"[getTwirl] Errors parsing template")
+                      Future { new SemanticTokens(emptyTokens) }
+                  }
+                case None =>
+                  scribe.info("[Debug] failed to load pc, returning empty semantic tokens")
                   Future { new SemanticTokens(emptyTokens) }
               }
             }
