@@ -3,7 +3,7 @@ import play.twirl.compiler.TwirlCompiler
 import java.io.File
 
 // Sample code from a simple view in WebJars
-val code =  """
+val code = """
 @this(webJarsUtil: org.webjars.play.WebJarsUtil, main: main)
 
 @(webjarsOrError: Either[Iterable[WebJar], String])
@@ -29,13 +29,17 @@ val code =  """
 }
 """
 
-val target = new File("/Users/w/Documents/git/webjars/app/views/index.scala.html")
+val target = new File(
+  "/Users/w/Documents/git/webjars/app/views/index.scala.html"
+)
 val targetDir = new File("/Users/w/Documents/git/webjars/app/views/")
 
-TwirlCompiler.compileVirtual(
-  content = code,
-  target,
-  targetDir,
-  "resultType",
-  "formatTypeIThink"
-)._content
+TwirlCompiler
+  .compileVirtual(
+    content = code,
+    target,
+    targetDir,
+    resultType = "play.twirl.api.HtmlFormat.Appendable",
+    formatterType = "play.twirl.api.HtmlFormat.type",
+  )
+  ._content

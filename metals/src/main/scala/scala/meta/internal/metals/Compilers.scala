@@ -1,9 +1,9 @@
 package scala.meta.internal.metals
 
+import java.io.File
 import java.net.URI
 import java.nio.file.Path
 import java.nio.file.Paths
-import java.io.File
 import java.util.concurrent.ScheduledExecutorService
 import java.{util => ju}
 
@@ -553,7 +553,6 @@ class Compilers(
       params: SemanticTokensParams,
       token: CancelToken,
   ): Future[SemanticTokens] = {
-    import play.twirl.parser.TwirlParser
     import play.twirl.compiler.TwirlCompiler
 
     val path = params.getTextDocument.getUri.toAbsolutePath
@@ -562,67 +561,80 @@ class Compilers(
     if (!userConfig().enableSemanticHighlighting) {
       Future { new SemanticTokens(emptyTokens) }
     } else if (path.isTwirlTemplate) {
-        scribe.info(s"[SemanticTokens] [isTwirlTemplate] Twirl template identified")
-        if (path.isTwirlHTMLTemplate) {
-          scribe.info(
-            s">>>>>>>>>>>>>\nTwirl Template: Attempting to parse semantic tokens..."
-          )
-          val content = buffers.get(path)
+      scribe.info(
+        s"[SemanticTokens] [isTwirlTemplate] Twirl template identified"
+      )
+      if (path.isTwirlHTMLTemplate) {
+        scribe.info(
+          s">>>>>>>>>>>>>\nTwirl Template: Attempting to parse semantic tokens..."
+        )
+        val content = buffers.get(path)
 
         scribe.info(
           "[getTwirl] Attempting to parse Twirl template source..."
         )
 
-          content match {
-            case Some(text) => {
-              // note to self: add this support to loadCompiler maybe?
-              loadCompiler(path) match {
+        content match {
+          case Some(text) => {
+            // note to self: add this support to loadCompiler maybe?
+            loadCompiler(path) match {
               case Some(compiler) =>
-                  scribe.info(
-                    s"Getting semantic tokens for twirlTokens [$text]."
-                  )
-                  scribe.info(s"inverseSources result: ${buildTargets.inverseSources(path)}")
-                  val outlineFiles = outlineFilesProvider.getOutlineFiles(compiler.buildTargetId())
-                  scribe.info(s"[SemanticTokens][Twirl][Compile] Using build target: [${compiler.buildTargetId().toString()}]")
-                  // maybe we should be using TwirlCompiler.compile(...)?
-                  val compiledTwirl = TwirlCompiler.compileVirtual(
-                    content = text,
-                    source = new File(path.toNIO.toUri()),
-                    sourceDirectory = new File(path.toNIO.getParent.toUri()),
-                    resultType = "play.twirl.api.HtmlFormat.Appendable",
-                    formatterType = "play.twirl.api.HtmlFormat.type"
-                  )
+                scribe.info(
+                  s"Getting semantic tokens for twirlTokens [$text]."
+                )
+                scribe.info(
+                  s"inverseSources result: ${buildTargets.inverseSources(path)}"
+                )
+                val outlineFiles =
+                  outlineFilesProvider.getOutlineFiles(compiler.buildTargetId())
+                scribe.info(
+                  s"[SemanticTokens][Twirl][Compile] Using build target: [${compiler.buildTargetId().toString()}]"
+                )
+                // maybe we should be using TwirlCompiler.compile(...)?
+                val compiledTwirl = TwirlCompiler.compileVirtual(
+                  content = text,
+                  source = new File(path.toNIO.toUri()),
+                  sourceDirectory = new File(path.toNIO.getParent.toUri()),
+                  resultType = "play.twirl.api.HtmlFormat.Appendable",
+                  formatterType = "play.twirl.api.HtmlFormat.type",
+                )
 
-                  scribe.info(s"compiled twirl=[${compiledTwirl._content}]")
+                scribe.info(s"compiled twirl=[${compiledTwirl._content}]")
 
-                  val vFile = CompilerVirtualFileParams(
-                    uri = URI.create(s"metals://twirl-vfile${path.toNIO}"),
-                    compiledTwirl._content, // -> string of compiled Twirl -> Scala
-                    token,
-                    outlineFiles,
-                  )
+                val vFile = CompilerVirtualFileParams(
+                  uri = URI.create(s"metals://twirl-vfile${path.toNIO}"),
+                  compiledTwirl._content, // -> string of compiled Twirl -> Scala
+                  token,
+                  outlineFiles,
+                )
 
-                  compiler
-                    .semanticTokens(vFile)
-                    /**
-                     * Maybe the issue is that we are using a virtual file?
-                     */
-                    .asScala
-                    .map { nodes =>
-                      scribe.info(s"[SemanticTokens][TwirlHTML] Received semantic nodes from pc: $nodes")
-                    }
+                /**
+                 * Maybe the issue is that we are using a virtual file?
+                 */
+                compiler
+                  .semanticTokens(vFile)
+                  .asScala
+                  .map { nodes =>
+                    scribe.info(
+                      s"[SemanticTokens][TwirlHTML] Received semantic nodes from pc: $nodes"
+                    )
+                  }
 
-                  Future { new SemanticTokens(emptyTokens) }
-                case None =>
-                  scribe.info("[Debug] failed to load pc, returning empty semantic tokens")
-                  Future { new SemanticTokens(emptyTokens) }
-              }
-            }
-            case None => {
-              scribe.info("[Info] Twirl template file opened, but no content was picked up (`buffers.get` returned None)")
-              Future { new SemanticTokens(emptyTokens) }
+                Future { new SemanticTokens(emptyTokens) }
+              case None =>
+                scribe.info(
+                  "[Debug] failed to load pc, returning empty semantic tokens"
+                )
+                Future { new SemanticTokens(emptyTokens) }
             }
           }
+          case None => {
+            scribe.info(
+              "[Info] Twirl template file opened, but no content was picked up (`buffers.get` returned None)"
+            )
+            Future { new SemanticTokens(emptyTokens) }
+          }
+        }
       } else { // not HTML Twirl template
         scribe.info(
           "[Info] Semantic highlighting for non-HTML Twirl templates are not supported. Returning empty semantic tokens"
@@ -1427,10 +1439,11 @@ class Compilers(
             loadCompiler(value)
               .orElse(Some(loadJavaCompiler(value)))
           else if (path.isTwirlHTMLTemplate) {
-            scribe.info(s"scalaTarget for twirl: ${buildTargets.scalaTarget(value)}")
+            scribe.info(
+              s"scalaTarget for twirl: ${buildTargets.scalaTarget(value)}"
+            )
             Some(loadCompiler(value).getOrElse(fallbackCompiler))
-          }
-          else if (path.isJavaFilename) Some(loadJavaCompiler(value))
+          } else if (path.isJavaFilename) Some(loadJavaCompiler(value))
           else None
         case _ => None
       }
