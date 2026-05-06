@@ -560,207 +560,214 @@ class Compilers(
     if (!userConfig().enableSemanticHighlighting) {
       Future { new SemanticTokens(emptyTokens) }
     } else if (path.isTwirlTemplate) {
-        scribe.info(">>>>>>TRYING TO READ PLAY TWIRL.....")
-        if (path.isTwirlHTMLTemplate) {
-          scribe.info(
-            s">>>>>>>>>>>>>\nTwirl Template: Attempting to parse semantic tokens..."
-          )
-          val content = buffers.get(path)
-          val parser = new TwirlParser(shouldParseInclusiveDot = false)
-          val Success = parser.Success
-          val Error = parser.Error
+      scribe.info(">>>>>>TRYING TO READ PLAY TWIRL.....")
+      if (path.isTwirlHTMLTemplate) {
+        scribe.info(
+          s">>>>>>>>>>>>>\nTwirl Template: Attempting to parse semantic tokens..."
+        )
+        val content = buffers.get(path)
+        val parser = new TwirlParser(shouldParseInclusiveDot = false)
+        val Success = parser.Success
+        val Error = parser.Error
 
-          scribe.info(
-            "[getTwirl] Attempting to parse Twirl template source..."
-          )
+        scribe.info(
+          "[getTwirl] Attempting to parse Twirl template source..."
+        )
 
-          content match {
-            case Some(text) => {
-              loadCompiler(path) match {
-                case Some(compiler) =>
-                  scribe.info(
-                    s"Getting semantic tokens for twirlTokens [$text]."
-                  )
-                  parser.parse(text) match {
-                    case Success(template, input) =>
-                      implicit val ct = token
-                      Future.successful(
-                        new SemanticTokens(
-                          TwirlSemanticTokensProvider.provide(template, compiler, path)
-                            .asJava
-                        )
+        content match {
+          case Some(text) => {
+            loadCompiler(path) match {
+              case Some(compiler) =>
+                scribe.info(
+                  s"Getting semantic tokens for twirlTokens [$text]."
+                )
+                parser.parse(text) match {
+                  case Success(template, input) =>
+                    implicit val ct = token
+                    Future.successful(
+                      new SemanticTokens(
+                        TwirlSemanticTokensProvider
+                          .provide(template, compiler, path)
+                          .asJava
                       )
-                    case Error(template, input, errors) =>
-                      // TODO: Add diagnostics reporting here - want to get it done here
-                      // so that we do not have to compile each Twirl template twice.
-                      scribe.info(s"[getTwirl] Errors parsing template")
-                      Future { new SemanticTokens(emptyTokens) }
-                  }
-                case None =>
-                  scribe.info("[Debug] failed to load pc, returning empty semantic tokens")
-                  Future { new SemanticTokens(emptyTokens) }
-              }
-            }
-            case None => {
-              scribe.info("[Info] Twirl template file opened, but no content was picked up (`buffers.get` returned None)")
-              Future { new SemanticTokens(emptyTokens) }
+                    )
+                  case Error(template, input, errors) =>
+                    // TODO: Add diagnostics reporting here - want to get it done here
+                    // so that we do not have to compile each Twirl template twice.
+                    scribe.info(s"[getTwirl] Errors parsing template")
+                    Future { new SemanticTokens(emptyTokens) }
+                }
+              case None =>
+                scribe.info(
+                  "[Debug] failed to load pc, returning empty semantic tokens"
+                )
+                Future { new SemanticTokens(emptyTokens) }
             }
           }
-        } else { // not HTML Twirl template
-          scribe.info("[Info] Semantic highlighting for non-HTML Twirl templates are not supported. Returning empty semantic tokens")
-          Future { new SemanticTokens(emptyTokens) }
+          case None => {
+            scribe.info(
+              "[Info] Twirl template file opened, but no content was picked up (`buffers.get` returned None)"
+            )
+            Future { new SemanticTokens(emptyTokens) }
+          }
         }
-      } else {
-        loadCompiler(path)
-          .map { compiler =>
-            val (input, _, adjust) =
-              sourceAdjustments(
-                params.getTextDocument().getUri(),
-                compiler.scalaVersion(),
-              )
+      } else { // not HTML Twirl template
+        scribe.info(
+          "[Info] Semantic highlighting for non-HTML Twirl templates are not supported. Returning empty semantic tokens"
+        )
+        Future { new SemanticTokens(emptyTokens) }
+      }
+    } else {
+      loadCompiler(path)
+        .map { compiler =>
+          val (input, _, adjust) =
+            sourceAdjustments(
+              params.getTextDocument().getUri(),
+              compiler.scalaVersion(),
+            )
 
-            /**
-             * Find the start that is actually contained in the file and not
-             * in the added parts such as imports in sbt.
-             *
-             * @param line line within the adjusted source
-             * @param character line within the adjusted source
-             * @param remaining the rest of the tokens to analyze
-             * @return the first found that should be contained with the rest
-             */
+          /**
+           * Find the start that is actually contained in the file and not
+           * in the added parts such as imports in sbt.
+           *
+           * @param line line within the adjusted source
+           * @param character line within the adjusted source
+           * @param remaining the rest of the tokens to analyze
+           * @return the first found that should be contained with the rest
+           */
+          @tailrec
+          def findCorrectStart(
+              line: Integer,
+              character: Integer,
+              remaining: List[Integer],
+          ): List[Integer] = {
+            remaining match {
+              case lineDelta :: charDelta :: next =>
+                val newCharacter: Integer =
+                  // only increase character delta if the same line
+                  if (lineDelta == 0) character + charDelta
+                  else charDelta
+
+                val adjustedTokenPos = adjust.adjustPos(
+                  new LspPosition(line + lineDelta, newCharacter),
+                  adjustToZero = false,
+                )
+                if (
+                  adjustedTokenPos.getLine() >= 0 &&
+                  adjustedTokenPos.getCharacter() >= 0
+                )
+                  (adjustedTokenPos.getLine(): Integer) ::
+                    (adjustedTokenPos.getCharacter(): Integer) :: next
+                else
+                  findCorrectStart(
+                    line + lineDelta,
+                    newCharacter,
+                    next.drop(3),
+                  )
+              case _ => Nil
+            }
+          }
+
+          def adjustForScala3Worksheet(
+              tokens: List[Integer]
+          ): List[Integer] = {
             @tailrec
-            def findCorrectStart(
-                line: Integer,
-                character: Integer,
+            @nowarn
+            def loop(
                 remaining: List[Integer],
+                acc: List[List[Integer]],
+                adjustColumnDelta: Int =
+                  0, // after multiline string we need to adjust column delta of the next token in line
             ): List[Integer] = {
               remaining match {
-                case lineDelta :: charDelta :: next =>
-                  val newCharacter: Integer =
-                    // only increase character delta if the same line
-                    if (lineDelta == 0) character + charDelta
-                    else charDelta
-
-                  val adjustedTokenPos = adjust.adjustPos(
-                    new LspPosition(line + lineDelta, newCharacter),
-                    adjustToZero = false,
-                  )
-                  if (
-                    adjustedTokenPos.getLine() >= 0 &&
-                    adjustedTokenPos.getCharacter() >= 0
-                  )
-                    (adjustedTokenPos.getLine(): Integer) ::
-                      (adjustedTokenPos.getCharacter(): Integer) :: next
-                  else
-                    findCorrectStart(
-                      line + lineDelta,
-                      newCharacter,
-                      next.drop(3),
-                    )
-                case _ => Nil
-              }
-            }
-
-            def adjustForScala3Worksheet(
-                tokens: List[Integer]
-            ): List[Integer] = {
-              @tailrec
-              @nowarn
-              def loop(
-                  remaining: List[Integer],
-                  acc: List[List[Integer]],
-                  adjustColumnDelta: Int =
-                    0, // after multiline string we need to adjust column delta of the next token in line
-              ): List[Integer] = {
-                remaining match {
-                  case Nil => acc.reverse.flatten
-                  // we need to remove additional indent
-                  case deltaLine :: deltaColumn :: len :: next
-                      if deltaLine != 0 =>
-                    if (deltaColumn - 2 >= 0) {
-                      val adjustedColumn: Integer = deltaColumn - 2
-                      val adjusted: List[Integer] =
-                        List(deltaLine, adjustedColumn, len) ++ next.take(2)
-                      loop(
-                        next.drop(2),
-                        adjusted :: acc,
-                      )
-                    }
-                    // for multiline strings, we highlight the entire line inluding leading whitespace
-                    // so we need to adjust the length after removing additional indent
-                    else {
-                      val deltaLen = deltaColumn - 2
-                      val adjustedLen: Integer = Math.max(0, len + deltaLen)
-                      val adjusted: List[Integer] =
-                        List(deltaLine, deltaColumn, adjustedLen) ++ next.take(
-                          2
-                        )
-                      loop(
-                        next.drop(2),
-                        adjusted :: acc,
-                        deltaLen,
-                      )
-                    }
-                  case deltaLine :: deltaColumn :: next =>
-                    val adjustedColumn: Integer =
-                      deltaColumn + adjustColumnDelta
+                case Nil => acc.reverse.flatten
+                // we need to remove additional indent
+                case deltaLine :: deltaColumn :: len :: next
+                    if deltaLine != 0 =>
+                  if (deltaColumn - 2 >= 0) {
+                    val adjustedColumn: Integer = deltaColumn - 2
                     val adjusted: List[Integer] =
-                      List(deltaLine, adjustedColumn) ++ next.take(3)
+                      List(deltaLine, adjustedColumn, len) ++ next.take(2)
                     loop(
-                      next.drop(3),
+                      next.drop(2),
                       adjusted :: acc,
                     )
-                }
+                  }
+                  // for multiline strings, we highlight the entire line inluding leading whitespace
+                  // so we need to adjust the length after removing additional indent
+                  else {
+                    val deltaLen = deltaColumn - 2
+                    val adjustedLen: Integer = Math.max(0, len + deltaLen)
+                    val adjusted: List[Integer] =
+                      List(deltaLine, deltaColumn, adjustedLen) ++ next.take(
+                        2
+                      )
+                    loop(
+                      next.drop(2),
+                      adjusted :: acc,
+                      deltaLen,
+                    )
+                  }
+                case deltaLine :: deltaColumn :: next =>
+                  val adjustedColumn: Integer =
+                    deltaColumn + adjustColumnDelta
+                  val adjusted: List[Integer] =
+                    List(deltaLine, adjustedColumn) ++ next.take(3)
+                  loop(
+                    next.drop(3),
+                    adjusted :: acc,
+                  )
               }
-
-              // Delta for first token was already adjusted in `findCorrectStart`
-              loop(tokens.drop(5), List(tokens.take(5)))
             }
 
-            val vFile =
-              CompilerVirtualFileParams(
-                path.toNIO.toUri(),
-                input.text,
-                token,
-                outlineFilesProvider.getOutlineFiles(compiler.buildTargetId()),
-              )
-            val isScala3 =
-              ScalaVersions.isScala3Version(compiler.scalaVersion())
-
-            compiler
-              .semanticTokens(vFile)
-              .asScala
-              .map { nodes =>
-                val plist =
-                  try {
-                    SemanticTokensProvider.provide(
-                      nodes.asScala.toList,
-                      vFile,
-                      path,
-                      isScala3,
-                      trees,
-                    )
-                  } catch {
-                    case NonFatal(e) =>
-                      scribe.error(
-                        s"Failed to tokenize input for semantic tokens for $path",
-                        e,
-                      )
-                      Nil
-                  }
-
-                val tokens =
-                  findCorrectStart(0, 0, plist.toList)
-                if (isScala3 && path.isWorksheet) {
-                  new SemanticTokens(adjustForScala3Worksheet(tokens).asJava)
-                } else {
-                  new SemanticTokens(tokens.asJava)
-                }
-              }
+            // Delta for first token was already adjusted in `findCorrectStart`
+            loop(tokens.drop(5), List(tokens.take(5)))
           }
-          .getOrElse(Future.successful(new SemanticTokens(emptyTokens)))
-      }
+
+          val vFile =
+            CompilerVirtualFileParams(
+              path.toNIO.toUri(),
+              input.text,
+              token,
+              outlineFilesProvider.getOutlineFiles(compiler.buildTargetId()),
+            )
+          val isScala3 =
+            ScalaVersions.isScala3Version(compiler.scalaVersion())
+
+          compiler
+            .semanticTokens(vFile)
+            .asScala
+            .map { nodes =>
+              val plist =
+                try {
+                  SemanticTokensProvider.provide(
+                    nodes.asScala.toList,
+                    vFile,
+                    path,
+                    isScala3,
+                    trees,
+                  )
+                } catch {
+                  case NonFatal(e) =>
+                    scribe.error(
+                      s"Failed to tokenize input for semantic tokens for $path",
+                      e,
+                    )
+                    Nil
+                }
+
+              val tokens =
+                findCorrectStart(0, 0, plist.toList)
+              if (isScala3 && path.isWorksheet) {
+                new SemanticTokens(adjustForScala3Worksheet(tokens).asJava)
+              } else {
+                new SemanticTokens(tokens.asJava)
+              }
+            }
+        }
+        .getOrElse(Future.successful(new SemanticTokens(emptyTokens)))
     }
+  }
 
   def inlayHints(
       params: InlayHintParams,

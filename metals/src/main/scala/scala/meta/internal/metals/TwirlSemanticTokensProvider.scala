@@ -1,22 +1,19 @@
 package scala.meta.internal.metals
 
 import java.net.URI
-import java.{util => ju}
 
 import scala.concurrent.ExecutionContextExecutorService
 
 import scala.meta.internal.metals.CompilerVirtualFileParams
+import scala.meta.internal.metals.MetalsEnrichments.XtensionJavaFuture
 import scala.meta.internal.pc.SemanticTokens
 import scala.meta.io.AbsolutePath
+import scala.meta.pc.CancelToken
 import scala.meta.pc.PresentationCompiler
 
 import org.eclipse.lsp4j.SemanticTokenModifiers
 import org.eclipse.lsp4j.SemanticTokenTypes
 import play.twirl.parser.TreeNodes._
-import scala.meta.pc.CancelToken
-import scala.meta.internal.metals.MetalsEnrichments.XtensionJavaFuture
-
-import play.twirl.compiler.TwirlCompiler
 
 /**
  *  Provides semantic tokens of Twirl files
@@ -107,8 +104,8 @@ object TwirlSemanticTokensProvider {
   }
 
   class Emitter(
-    compiler: PresentationCompiler,
-    path: AbsolutePath
+      compiler: PresentationCompiler,
+      path: AbsolutePath,
   ) {
     def resolveTokens(
         state: State,
@@ -135,25 +132,33 @@ object TwirlSemanticTokensProvider {
         state: State,
         pos: Position,
         str: String,
-    )(implicit ec: ExecutionContextExecutorService, rc: ReportContext, ct: CancelToken): State = {
+    )(implicit
+        ec: ExecutionContextExecutorService,
+        rc: ReportContext,
+        ct: CancelToken,
+    ): State = {
       scribe.info(s"Scala emitted: [$str].")
       // TODO: Call the current semantic tokens impl for Scala.
 
-    /**
-      * Things I need to do:
-        - Get VirtualFileParams set up
-        - Load PC & get semanticdbTokens
-        - then somehow map these positions back to Twirl positions
-      * This method also still needs to return a State
-      */
+      /**
+       * Things I need to do:
+       *        - Get VirtualFileParams set up
+       *        - Load PC & get semanticdbTokens
+       *        - then somehow map these positions back to Twirl positions
+       * This method also still needs to return a State
+       */
 
       val vFile = CompilerVirtualFileParams(
         // can have multiple Scala snippets per Twirl file, so need to use line/col here
-        uri = URI.create(s"metals://twirl-vfile-scala-snippet${path.toNIO}${pos.line}/${pos.column}"),
+        uri = URI.create(
+          s"metals://twirl-vfile-scala-snippet${path.toNIO}${pos.line}/${pos.column}"
+        ),
         text = str,
       )
 
-      scribe.info(s"[emitScala] Setting up vFile params, uri=[${vFile.uri.toString()}]")
+      scribe.info(
+        s"[emitScala] Setting up vFile params, uri=[${vFile.uri.toString()}]"
+      )
 
       compiler
         .semanticTokens(vFile)
@@ -171,7 +176,6 @@ object TwirlSemanticTokensProvider {
       //   .map { nodes =>
       //     scribe.info(s"[emitScala] Semantic tokens extracted from compiler: [$nodes]")
       //   }
-
 
       state
     }
@@ -264,7 +268,11 @@ object TwirlSemanticTokensProvider {
       template: BaseTemplate,
       pos: Position,
       emitter: Emitter,
-  )(implicit ec: ExecutionContextExecutorService, rc: ReportContext, ct: CancelToken): State = {
+  )(implicit
+      ec: ExecutionContextExecutorService,
+      rc: ReportContext,
+      ct: CancelToken,
+  ): State = {
 
     /**
      * Matches common template metadata. This applies to all templates that we might receive and
@@ -317,7 +325,7 @@ object TwirlSemanticTokensProvider {
             line = sub.pos.line,
             column = sub.pos.column,
           ),
-          emitter = emitter
+          emitter = emitter,
         )
       }
 
@@ -648,8 +656,11 @@ object TwirlSemanticTokensProvider {
     }
   }
 
-  def matchNode(node: TemplateTree, state: State, emitter: Emitter)
-               (implicit ec: ExecutionContextExecutorService, rc: ReportContext, ct: CancelToken): State = {
+  def matchNode(node: TemplateTree, state: State, emitter: Emitter)(implicit
+      ec: ExecutionContextExecutorService,
+      rc: ReportContext,
+      ct: CancelToken,
+  ): State = {
     def traverseReassignment(
         state: State,
         ref: Either[SubTemplate, Var],
@@ -661,7 +672,7 @@ object TwirlSemanticTokensProvider {
             template = template,
             pos =
               Position(line = template.pos.line, column = template.pos.column),
-            emitter = emitter
+            emitter = emitter,
           )
         case Right(var_) =>
           // Just emit everything as Scala and then let Metals provide
@@ -688,7 +699,7 @@ object TwirlSemanticTokensProvider {
           state,
           block.contents,
           Position(block.pos.line, block.pos.column),
-          emitter = emitter
+          emitter = emitter,
         ).tokens
       State(
         prevToken = state.prevToken,
@@ -738,8 +749,15 @@ object TwirlSemanticTokensProvider {
    * @return           The flattened, delta-encoded source tokens, ready to be
    *                   provided to the IDE.
    */
-  def provide (template: Template, compiler: PresentationCompiler, path: AbsolutePath)
-              (implicit ec: ExecutionContextExecutorService, rc: ReportContext, ct: CancelToken): List[Integer] =
+  def provide(
+      template: Template,
+      compiler: PresentationCompiler,
+      path: AbsolutePath,
+  )(implicit
+      ec: ExecutionContextExecutorService,
+      rc: ReportContext,
+      ct: CancelToken,
+  ): List[Integer] =
     matchTemplate(
       state = State(
         prevToken = SourceTwirlSemanticToken(0, 0, 0, 0, 0),
@@ -750,10 +768,14 @@ object TwirlSemanticTokensProvider {
       emitter = new Emitter(compiler, path),
     ).tokens
       .sortBy(token => (token.line, token.column))
-      .foldLeft((SourceTwirlSemanticToken(0, 0, 0, 0, 0), List.empty[DeltaEncodedTwirlSemanticToken])) {
-        case ((prev, acc), curr) =>
-          val encoded = curr.deltaEncode(prev)
-          (curr, acc.appended(encoded))
+      .foldLeft(
+        (
+          SourceTwirlSemanticToken(0, 0, 0, 0, 0),
+          List.empty[DeltaEncodedTwirlSemanticToken],
+        )
+      ) { case ((prev, acc), curr) =>
+        val encoded = curr.deltaEncode(prev)
+        (curr, acc.appended(encoded))
       }
       ._2
       .flatMap(token => token.toList)
