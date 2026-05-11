@@ -621,33 +621,36 @@ class Compilers(
             // note to self: add this support to loadCompiler maybe?
             loadCompiler(path) match {
               case Some(compiler) =>
-                scribe.info(
-                  s"Getting semantic tokens for twirlTokens [$text]."
-                )
-                scribe.info(
-                  s"inverseSources result: ${buildTargets.inverseSources(path)}"
-                )
-                val outlineFiles =
-                  outlineFilesProvider.getOutlineFiles(compiler.buildTargetId())
-                scribe.info(
-                  s"[SemanticTokens][Twirl][Compile] Using build target: [${compiler.buildTargetId().toString()}]"
-                )
-                // maybe we should be using TwirlCompiler.compile(...)?
-                val compiledTwirl = TwirlCompiler.compileVirtual(
-                  content = text,
-                  source = new File(path.toNIO.toUri()),
-                  sourceDirectory = new File(path.toNIO.getParent.toUri()),
-                  resultType = "play.twirl.api.HtmlFormat.Appendable",
-                  formatterType = "play.twirl.api.HtmlFormat.type",
-                )
+                scribe.info(s"Getting semantic tokens for twirlTokens [$text].")
+                scribe.info(s"inverseSources result: ${buildTargets.inverseSources(path)}")
+                scribe.info(s"[SemanticTokens][Twirl][Compile] Using build target: [${compiler.buildTargetId().toString()}]")
 
-                scribe.info(s"compiled twirl=[${compiledTwirl._content}]")
+                val targetId = buildTargets.inverseSources(path).get
+                val root = workspace.toNIO
+                val scalaVersion = buildTargets.scalaTarget(targetId).get.scalaVersion.split("-")(0)
+                //scribe.info(s"scalav:[$scalaVersion], buildTarget=[${buildTargets.scalaTarget(targetId).get.toString}]")
+                val generatedName = path.toNIO.getFileName.toString.replace(".scala.html", ".template.scala")
+                val appDir = root.resolve("app")
+                val relativeToApp = appDir.relativize(path.toNIO).getParent // views/partials -> views/html/partials
 
+                val generatedPath =
+                  root
+                    .resolve("target")
+                    .resolve(s"scala-$scalaVersion")
+                    .resolve("twirl")
+                    .resolve("main")
+                    .resolve(relativeToApp.getParent.toString)
+                    .resolve("html") // inserted by twirl
+                    .resolve(relativeToApp.getFileName.toString)
+                    .resolve(generatedName)
+
+                scribe.info(s"[twirl][semantictokens] using path [${generatedPath.toString()}] and absolute path [${AbsolutePath(generatedPath).toString()}]")
+                  scribe.info(s"[twirl][semantictokens] using uri=[${generatedPath.toURI}]")
                 val vFile = CompilerVirtualFileParams(
-                  uri = URI.create(s"metals://twirl-vfile${path.toNIO}"),
-                  compiledTwirl._content, // -> string of compiled Twirl -> Scala
+                    uri = generatedPath.toUri(),
+                    AbsolutePath(generatedPath).readText,
                   token,
-                  outlineFiles,
+                    outlineFilesProvider.getOutlineFiles(compiler.buildTargetId())
                 )
 
                 /**
