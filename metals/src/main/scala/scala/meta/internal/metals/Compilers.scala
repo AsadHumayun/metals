@@ -652,20 +652,41 @@ class Compilers(
                   token,
                     outlineFilesProvider.getOutlineFiles(compiler.buildTargetId())
                 )
-
-                /**
-                 * Maybe the issue is that we are using a virtual file?
-                 */
-                compiler
-                  .semanticTokens(vFile)
-                  .asScala
-                  .map { nodes =>
+                  compiler
+                    .semanticTokens(vFile)
+                    .asScala
+                    .map { nodes =>
                     scribe.info(
                       s"[SemanticTokens][TwirlHTML] Received semantic nodes from pc: $nodes"
                     )
-                  }
+                      val (input, _, adjust) =
+																																		sourceAdjustments(
+																																			params.getTextDocument().getUri(),
+																																			compiler.scalaVersion(),
+																																		)
+                      val isScala3 = ScalaVersions.isScala3Version(compiler.scalaVersion())
+                      val plist =
+                        try {
+                          SemanticTokensProvider.provide(
+                            nodes.asScala.toList,
+                            vFile,
+                            path,
+                            isScala3,
+                            trees,
+                          )
+                        } catch {
+                          case NonFatal(e) =>
+                            scribe.error(
+                              s"Failed to tokenize input for semantic tokens for $path",
+                              e,
+                            )
+                            Nil
+                        }
+                        val tokens =
+                          findCorrectStart(0, 0, plist.toList, adjust)
 
-                Future { new SemanticTokens(emptyTokens) }
+                      new SemanticTokens(tokens.asJava)
+                    }
               case None =>
                 scribe.info(
                   "[Debug] failed to load pc, returning empty semantic tokens"
