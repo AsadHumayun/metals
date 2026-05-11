@@ -553,7 +553,49 @@ class Compilers(
       params: SemanticTokensParams,
       token: CancelToken,
   ): Future[SemanticTokens] = {
-    import play.twirl.compiler.TwirlCompiler
+    /**
+      * Find the start that is actually contained in the file and not
+      * in the added parts such as imports in sbt.
+      *
+      * @param line line within the adjusted source
+      * @param character line within the adjusted source
+      * @param remaining the rest of the tokens to analyze
+      * @return the first found that should be contained with the rest
+      */
+    @tailrec
+    def findCorrectStart(
+        line: Integer,
+        character: Integer,
+        remaining: List[Integer],
+        adjust: AdjustLspData
+    ): List[Integer] = {
+      remaining match {
+        case lineDelta :: charDelta :: next =>
+          val newCharacter: Integer =
+            // only increase character delta if the same line
+            if (lineDelta == 0) character + charDelta
+            else charDelta
+
+          val adjustedTokenPos = adjust.adjustPos(
+            new LspPosition(line + lineDelta, newCharacter),
+            adjustToZero = false,
+          )
+          if (
+            adjustedTokenPos.getLine() >= 0 &&
+            adjustedTokenPos.getCharacter() >= 0
+          )
+            (adjustedTokenPos.getLine(): Integer) ::
+              (adjustedTokenPos.getCharacter(): Integer) :: next
+          else
+            findCorrectStart(
+              line + lineDelta,
+              newCharacter,
+              next.drop(3),
+              adjust,
+            )
+        case _ => Nil
+      }
+    }
 
     val path = params.getTextDocument.getUri.toAbsolutePath
     val emptyTokens = ju.Collections.emptyList[Integer]();
@@ -650,48 +692,6 @@ class Compilers(
               compiler.scalaVersion(),
             )
 
-          /**
-           * Find the start that is actually contained in the file and not
-           * in the added parts such as imports in sbt.
-           *
-           * @param line line within the adjusted source
-           * @param character line within the adjusted source
-           * @param remaining the rest of the tokens to analyze
-           * @return the first found that should be contained with the rest
-           */
-          @tailrec
-          def findCorrectStart(
-              line: Integer,
-              character: Integer,
-              remaining: List[Integer],
-          ): List[Integer] = {
-            remaining match {
-              case lineDelta :: charDelta :: next =>
-                val newCharacter: Integer =
-                  // only increase character delta if the same line
-                  if (lineDelta == 0) character + charDelta
-                  else charDelta
-
-                val adjustedTokenPos = adjust.adjustPos(
-                  new LspPosition(line + lineDelta, newCharacter),
-                  adjustToZero = false,
-                )
-                if (
-                  adjustedTokenPos.getLine() >= 0 &&
-                  adjustedTokenPos.getCharacter() >= 0
-                )
-                  (adjustedTokenPos.getLine(): Integer) ::
-                    (adjustedTokenPos.getCharacter(): Integer) :: next
-                else
-                  findCorrectStart(
-                    line + lineDelta,
-                    newCharacter,
-                    next.drop(3),
-                  )
-              case _ => Nil
-            }
-          }
-
           def adjustForScala3Worksheet(
               tokens: List[Integer]
           ): List[Integer] = {
@@ -781,7 +781,7 @@ class Compilers(
                 }
 
               val tokens =
-                findCorrectStart(0, 0, plist.toList)
+                findCorrectStart(0, 0, plist.toList, adjust)
               if (isScala3 && path.isWorksheet) {
                 new SemanticTokens(adjustForScala3Worksheet(tokens).asJava)
               } else {
