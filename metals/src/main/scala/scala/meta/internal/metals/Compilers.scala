@@ -1,6 +1,5 @@
 package scala.meta.internal.metals
 
-import java.io.File
 import java.net.URI
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -646,19 +645,19 @@ class Compilers(
 
                 scribe.info(s"[twirl][semantictokens] using path [${generatedPath.toString()}] and absolute path [${AbsolutePath(generatedPath).toString()}]")
                   scribe.info(s"[twirl][semantictokens] using uri=[${generatedPath.toURI}]")
-                val vFile = CompilerVirtualFileParams(
+                  val vFile = CompilerVirtualFileParams(
                     uri = generatedPath.toUri(),
                     AbsolutePath(generatedPath).readText,
-                  token,
+                    token,
                     outlineFilesProvider.getOutlineFiles(compiler.buildTargetId())
-                )
+                  )
                   compiler
                     .semanticTokens(vFile)
                     .asScala
                     .map { nodes =>
-                    scribe.info(
-                      s"[SemanticTokens][TwirlHTML] Received semantic nodes from pc: $nodes"
-                    )
+                      scribe.info(
+                        s"[SemanticTokens][TwirlHTML] Received semantic nodes from pc: $nodes"
+                      )
                       val (input, _, adjust) =
 																																		sourceAdjustments(
 																																			params.getTextDocument().getUri(),
