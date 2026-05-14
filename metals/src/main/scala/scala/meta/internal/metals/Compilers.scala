@@ -778,16 +778,16 @@ class Compilers(
                             case ((prevLine, prevCol, absTokens), token) =>
                               val
                                 deltaLine :: deltaStart :: length :: tokenType :: tokenModifier :: _ = token
-                              scribe.info(
-                                s"""
-                                deltaLine=[$deltaLine]
-                                deltaStart=[$deltaStart]
-                                len=[$length]
-                                tokenType=[$tokenType]
-                                tokenModifier=[$tokenModifier]
-                                token=[${token.mkString(",")}]
-                                """
-                              )
+                              // scribe.info(
+                              //   s"""
+                              //   deltaLine=[$deltaLine]
+                              //   deltaStart=[$deltaStart]
+                              //   len=[$length]
+                              //   tokenType=[$tokenType]
+                              //   tokenModifier=[$tokenModifier]
+                              //   token=[${token.mkString(",")}]
+                              //   """
+                              // )
                               val absLine = prevLine + deltaLine
                               val absCol: Int = if (deltaLine == 0) prevCol + deltaStart else deltaStart
                               (absLine, absCol, absTokens.appended(AbsoluteToken(absLine, absCol, length, tokenType, tokenModifier)))
@@ -811,8 +811,8 @@ class Compilers(
 
                         def lookupPair(line: Int, col: Int): Int = lineOffsets(line) + col
                         val twirlTokens = ListBuffer.empty[AbsoluteToken]
-                        scribe.info(s"[twirl][semanticTokens] meta=[${generatedSource.meta}]")
-                        scribe.info(s"[twirl][semantictokens] matrix=[${matrix}]")
+                        // scribe.info(s"[twirl][semanticTokens] meta=[${generatedSource.meta}]")
+                        // scribe.info(s"[twirl][semantictokens] matrix=[${matrix}]")
 
                         matrix.map {
                           // these are positions from the MATRIX, which are raw char positions from the respective files
@@ -841,17 +841,16 @@ class Compilers(
                             )
                             twirlTokens.append(twirlToken)
                         }
+                        scribe.info(s"[twirl][twirlTokenDump]<<<<<<\n${twirlTokens.grouped(5).map(g=>"["+g.toList.mkString(", ")+"]").mkString("\n")}")
                         val unnamed = twirlTokens
                           .sortBy(t => (t.line, t.column))
                           .foldLeft(List(DeltaEncodedToken(0, 0, 0, 0, 0))) {
                             (prev, curr) =>
                               prev.appended(curr.deltaEncode(prev.last))
-                          }.map(e => e.toList).flatten.drop(1)
+                          }.drop(1).map(e => e.toList).flatten
                         scribe.info(unnamed.grouped(5).map(t => t.mkString(";")).mkString("\n"))
                       new SemanticTokens(unnamed.asJava)
                     }
-
-                    t
               case None =>
                 scribe.info(
                   "[Debug] failed to load pc, returning empty semantic tokens"
