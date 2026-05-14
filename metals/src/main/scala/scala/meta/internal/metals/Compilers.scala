@@ -652,6 +652,47 @@ class Compilers(
 
                 val str = AbsolutePath(generatedPath).readText
 
+                /**
+                 * taken from TwirlCompiler.GeneratedSource - these
+                 * needed to be extracted here since them being lazy vals in
+                 * the library meant that they weren't computing and I couldn't
+                 * get it to work
+                 */
+                val content = str
+                val meta: Map[String, String] = {
+                  val Meta          = """([A-Z]+): (.*)""".r
+                  val UndefinedMeta = """([A-Z]+):""".r
+                  Map.empty[String, String] ++ {
+                    try {
+                      content
+                        .split("-- GENERATED --")(1)
+                        .trim
+                        .split('\n')
+                        .map { m =>
+                          m.trim match {
+                            case Meta(key, value)   => key -> value
+                            case UndefinedMeta(key) => key -> ""
+                            case _                  => ("UNDEFINED", "")
+                          }
+                        }
+                        .toMap
+                    } catch {
+                      case _: Exception => Map.empty[String, String]
+                    }
+                  }
+                }
+                val matrix: Seq[(Int, Int)] = {
+                  for {
+                    pos <- meta("MATRIX").split('|').toIndexedSeq
+                    c = pos.split("->")
+                  } yield
+                    try {
+                      Integer.parseInt(c(0)) -> Integer.parseInt(c(1))
+                    } catch {
+                      case _: Exception => (0, 0) // Skip if MATRIX meta is corrupted
+                    }
+                }
+
                 scribe.info(s"[twirl][semantictokens] using path [${generatedPath.toString()}] and absolute path [${AbsolutePath(generatedPath).toString()}]")
                   scribe.info(s"[twirl][semantictokens] using uri=[${generatedPath.toURI}]")
                   val vFile = CompilerVirtualFileParams(
@@ -660,7 +701,7 @@ class Compilers(
                     token,
                     outlineFilesProvider.getOutlineFiles(compiler.buildTargetId())
                   )
-                  val t = compiler
+                  compiler
                     .semanticTokens(vFile)
                     .asScala
                     .map { nodes =>
@@ -756,40 +797,6 @@ class Compilers(
                         scribe.info(s"[twirl][semantictokens] the compiled data is [$str]")
                         // Scala/Twirl stuff
                         val generatedSource = GeneratedSource(new File(path.toNIO.toUri()))
-                        val content = str
-                        val meta: Map[String, String] = {
-                          val Meta          = """([A-Z]+): (.*)""".r
-                          val UndefinedMeta = """([A-Z]+):""".r
-                          Map.empty[String, String] ++ {
-                            try {
-                              content
-                                .split("-- GENERATED --")(1)
-                                .trim
-                                .split('\n')
-                                .map { m =>
-                                  m.trim match {
-                                    case Meta(key, value)   => key -> value
-                                    case UndefinedMeta(key) => key -> ""
-                                    case _                  => ("UNDEFINED", "")
-                                  }
-                                }
-                                .toMap
-                            } catch {
-                              case _: Exception => Map.empty[String, String]
-                            }
-                          }
-                        }
-                        val matrix: Seq[(Int, Int)] = {
-                          for {
-                            pos <- meta("MATRIX").split('|').toIndexedSeq
-                            c = pos.split("->")
-                          } yield
-                            try {
-                              Integer.parseInt(c(0)) -> Integer.parseInt(c(1))
-                            } catch {
-                              case _: Exception => (0, 0) // Skip if MATRIX meta is corrupted
-                            }
-                        }
                         scribe.info(s"<><><><><><><><><><><><><><>\nmeta=[$meta]\nmatrix=[]")
                         val lines = str.split("\n", -1)
                         val lineOffsets = lines.scanLeft(0)((offset, line) => offset + line.length + 1)
