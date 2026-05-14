@@ -818,7 +818,19 @@ class Compilers(
                           // these are positions from the MATRIX, which are raw char positions from the respective files
                           case (scala, twirl) =>
                             val (scalaLine, scalaCol) = lookupChar(scala)
-                            val scalaSemanticToken = absTokens.get((scalaLine, scalaCol)).fold(idk)(t => t)
+                            val scalaSemanticToken = absTokens.get((scalaLine, scalaCol)) match {
+                              case Some(token) => token
+                              case None                       =>
+                                try {
+                                  absTokens.values.filter { absToken =>
+                                    val srcPos = lookupPair(absToken.line, absToken.column)
+                                    scala >= srcPos && scala <= srcPos + absToken.length
+                                  }.toList.apply(0)
+                                } catch {
+                                  case _: Throwable => idk
+                                }
+                            }
+                            scribe.info(s"[MATRIX MAPPER] got scalaSemanticToken $scalaSemanticToken")
                             val (twirlLine, twirlCol) = lookupChar(twirl)
                             val twirlToken = AbsoluteToken(
                               line = twirlLine,
