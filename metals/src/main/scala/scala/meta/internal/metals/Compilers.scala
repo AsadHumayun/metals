@@ -69,6 +69,11 @@ import org.eclipse.lsp4j.jsonrpc.messages.{Either => JEither}
 import org.eclipse.lsp4j.{Position => LspPosition}
 import org.eclipse.lsp4j.{Range => LspRange}
 import org.eclipse.lsp4j.{debug => d}
+import play.twirl.compiler.GeneratedSource
+import scala.meta.Lit
+import org.scalameta.adt.Reflection
+import scala.collection.mutable.ListBuffer
+import scala.meta.tokenizers.Api
 
 /**
  * Manages lifecycle for presentation compilers in all build targets.
@@ -606,6 +611,8 @@ class Compilers(
         s"[SemanticTokens] [isTwirlTemplate] Twirl template identified"
       )
       if (path.isTwirlHTMLTemplate) {
+        import java.io.File;
+
         scribe.info(
           s">>>>>>>>>>>>>\nTwirl Template: Attempting to parse semantic tokens..."
         )
@@ -643,15 +650,17 @@ class Compilers(
                     .resolve(relativeToApp.getFileName.toString)
                     .resolve(generatedName)
 
+                val str = AbsolutePath(generatedPath).readText
+
                 scribe.info(s"[twirl][semantictokens] using path [${generatedPath.toString()}] and absolute path [${AbsolutePath(generatedPath).toString()}]")
                   scribe.info(s"[twirl][semantictokens] using uri=[${generatedPath.toURI}]")
                   val vFile = CompilerVirtualFileParams(
                     uri = generatedPath.toUri(),
-                    AbsolutePath(generatedPath).readText,
+                    str,
                     token,
                     outlineFilesProvider.getOutlineFiles(compiler.buildTargetId())
                   )
-                  compiler
+                  val t = compiler
                     .semanticTokens(vFile)
                     .asScala
                     .map { nodes =>
@@ -659,10 +668,10 @@ class Compilers(
                         s"[SemanticTokens][TwirlHTML] Received semantic nodes from pc: $nodes"
                       )
                       val (input, _, adjust) =
-																																		sourceAdjustments(
-																																			params.getTextDocument().getUri(),
-																																			compiler.scalaVersion(),
-																																		)
+                          sourceAdjustments(
+                            params.getTextDocument().getUri(),
+                            compiler.scalaVersion(),
+                          )
                       val isScala3 = ScalaVersions.isScala3Version(compiler.scalaVersion())
                       val plist =
                         try {
@@ -681,11 +690,149 @@ class Compilers(
                             )
                             Nil
                         }
+
+                        scribe.info(s"[twirl][semanticHighlighting] LSP tokens=[${plist}]")
+
                         val tokens =
                           findCorrectStart(0, 0, plist.toList, adjust)
+                        // decode delta tokens back to absolute positions
+                        case class AbsoluteToken(
+                          line          : Int,
+                          column        : Int,
+                          length        : Int,
+                          tokenType     : Int,
+                          tokenModifier : Int,
+                        ) {
+                          def deltaEncode(prevToken: DeltaEncodedToken): DeltaEncodedToken = {
+                            println(s"deltaLine=[${prevToken.deltaLine}];deltaStart=[${prevToken.deltaStart}]")
+                            val deltaLine = line - prevToken.deltaLine
+                            // relative to 0 or the previous token’s start if they are on the same line
+                            val deltaStart = if (deltaLine == 0)
+                                column - prevToken.deltaStart
+                              else
+                                column
+                            scribe.info(s"-- DELTA ENCODING --: t=$tokenType, m=$tokenModifier")
+                            DeltaEncodedToken(
+                              deltaLine = deltaLine,
+                              deltaStart = deltaStart,
+                              length = length,
+                              tokenType = tokenType,
+                              tokenModifier = tokenModifier,
+                            )
+                          }
+                        }
+                        case class DeltaEncodedToken(
+                          deltaLine     : Int,
+                          deltaStart    : Int,
+                          length        : Int,
+                          tokenType     : Int,
+                          tokenModifier : Int
+                        ) {
+                          def toList: List[Integer] = List(deltaLine, deltaStart, length, tokenType, tokenModifier)
+                        }
+                        val absTokens: Map[(Int, Int), AbsoluteToken] = tokens
+                          .grouped(5)
+                          //      Line, Char, AbsToken (delta decoded semantic token)
+                          .foldLeft((0, 0, List[AbsoluteToken]())) {
+                            case ((prevLine, prevCol, absTokens), token) =>
+                              val
+                                deltaLine :: deltaStart :: length :: tokenType :: tokenModifier :: _ = token
+                              scribe.info(
+                                s"""
+                                deltaLine=[$deltaLine]
+                                deltaStart=[$deltaStart]
+                                len=[$length]
+                                tokenType=[$tokenType]
+                                tokenModifier=[$tokenModifier]
+                                token=[${token.mkString(",")}]
+                                """
+                              )
+                              val absLine = prevLine + deltaLine
+                              val absCol: Int = if (deltaLine == 0) prevCol + deltaStart else deltaStart
+                              (absLine, absCol, absTokens.appended(AbsoluteToken(absLine, absCol, length, tokenType, tokenModifier)))
+                          }._3.map(t => (t.line, t.column) -> t).toMap
 
-                      new SemanticTokens(tokens.asJava)
+                        scribe.info(s"[twirl][semanticTokens] => Decoded semantic tokens with abs source positions=[${absTokens.toString()}]")
+                        scribe.info(s"[twirl][semantictokens] the compiled data is [$str]")
+                        // Scala/Twirl stuff
+                        val generatedSource = GeneratedSource(new File(path.toNIO.toUri()))
+                        val content = str
+                        val meta: Map[String, String] = {
+                          val Meta          = """([A-Z]+): (.*)""".r
+                          val UndefinedMeta = """([A-Z]+):""".r
+                          Map.empty[String, String] ++ {
+                            try {
+                              content
+                                .split("-- GENERATED --")(1)
+                                .trim
+                                .split('\n')
+                                .map { m =>
+                                  m.trim match {
+                                    case Meta(key, value)   => key -> value
+                                    case UndefinedMeta(key) => key -> ""
+                                    case _                  => ("UNDEFINED", "")
+                                  }
+                                }
+                                .toMap
+                            } catch {
+                              case _: Exception => Map.empty[String, String]
+                            }
+                          }
+                        }
+                        val matrix: Seq[(Int, Int)] = {
+                          for {
+                            pos <- meta("MATRIX").split('|').toIndexedSeq
+                            c = pos.split("->")
+                          } yield
+                            try {
+                              Integer.parseInt(c(0)) -> Integer.parseInt(c(1))
+                            } catch {
+                              case _: Exception => (0, 0) // Skip if MATRIX meta is corrupted
+                            }
+                        }
+                        scribe.info(s"<><><><><><><><><><><><><><>\nmeta=[$meta]\nmatrix=[]")
+                        val lines = str.split("\n", -1)
+                        val lineOffsets = lines.scanLeft(0)((offset, line) => offset + line.length + 1)
+                        val idk = AbsoluteToken(0, 0, 0, 0, 0)
+
+                        def lookupChar(char: Int): (Int, Int) = {
+                          val line = lineOffsets.reverse.filter(f => f - char <= 0)(0)
+                          val column = char - line
+
+                          (lineOffsets.indexOf(line), column)
+                        }
+
+                        def lookupPair(line: Int, col: Int): Int = lineOffsets(line) + col
+                        val twirlTokens = ListBuffer.empty[AbsoluteToken]
+                        scribe.info(s"[twirl][semanticTokens] meta=[${generatedSource.meta}]")
+                        scribe.info(s"[twirl][semantictokens] matrix=[${matrix}]")
+
+                        matrix.map {
+                          // these are positions from the MATRIX, which are raw char positions from the respective files
+                          case (scala, twirl) =>
+                            val (scalaLine, scalaCol) = lookupChar(scala)
+                            val scalaSemanticToken = absTokens.get((scalaLine, scalaCol)).fold(idk)(t => t)
+                            val (twirlLine, twirlCol) = lookupChar(twirl)
+                            val twirlToken = AbsoluteToken(
+                              line = twirlLine,
+                              column = twirlCol,
+                              length = scalaSemanticToken.length,
+                              tokenType = scalaSemanticToken.tokenType,
+                              tokenModifier = scalaSemanticToken.tokenModifier
+                            )
+                            twirlTokens.append(twirlToken)
+                        }
+                        val unnamed = twirlTokens
+                          .sortBy(t => (t.line, t.column))
+                          .foldLeft(List(DeltaEncodedToken(0, 0, 0, 0, 0))) {
+                            (prev, curr) =>
+                              prev.appended(curr.deltaEncode(prev.last))
+                          }.map(e => e.toList).flatten.drop(1)
+                        scribe.info(unnamed.grouped(5).map(t => t.mkString(";")).mkString("\n"))
+                      new SemanticTokens(unnamed.asJava)
                     }
+
+                    t
               case None =>
                 scribe.info(
                   "[Debug] failed to load pc, returning empty semantic tokens"
