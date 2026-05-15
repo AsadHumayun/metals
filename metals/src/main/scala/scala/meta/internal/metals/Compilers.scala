@@ -74,6 +74,9 @@ import scala.meta.Lit
 import org.scalameta.adt.Reflection
 import scala.collection.mutable.ListBuffer
 import scala.meta.tokenizers.Api
+import scala.meta.classifiers
+import scala.meta.contrib.implicits.TreeExtensions
+import play.twirl.compiler.GeneratedSourceVirtual
 
 /**
  * Manages lifecycle for presentation compilers in all build targets.
@@ -796,17 +799,17 @@ class Compilers(
                         scribe.info(s"[twirl][semanticTokens] => Decoded semantic tokens with abs source positions=[${absTokens.toString()}]")
                         scribe.info(s"[twirl][semantictokens] the compiled data is [$str]")
                         // Scala/Twirl stuff
-                        val generatedSource = GeneratedSource(new File(path.toNIO.toUri()))
+                        val generatedSource = GeneratedSource(new File(generatedPath.toUri()))
                         scribe.info(s"<><><><><><><><><><><><><><>\nmeta=[$meta]\nmatrix=[]")
                         val lines = str.split("\n", -1)
                         val lineOffsets = lines.scanLeft(0)((offset, line) => offset + line.length + 1)
+                        val matrix = generatedSource.matrix
                         val idk = AbsoluteToken(0, 0, 0, 0, 0)
 
                         def lookupChar(char: Int): (Int, Int) = {
-                          val line = lineOffsets.reverse.filter(f => f - char <= 0)(0)
-                          val column = char - line
-
-                          (lineOffsets.indexOf(line), column)
+                          val line = lineOffsets.lastIndexWhere(_ <= char)
+                          val column = char - lineOffsets(line)
+                          (line, column)
                         }
 
                         def lookupPair(line: Int, col: Int): Int = lineOffsets(line) + col
@@ -814,33 +817,43 @@ class Compilers(
                         // scribe.info(s"[twirl][semanticTokens] meta=[${generatedSource.meta}]")
                         // scribe.info(s"[twirl][semantictokens] matrix=[${matrix}]")
 
-                        matrix.map {
-                          // these are positions from the MATRIX, which are raw char positions from the respective files
-                          case (scala, twirl) =>
-                            val (scalaLine, scalaCol) = lookupChar(scala)
-                            val scalaSemanticToken = absTokens.get((scalaLine, scalaCol)) match {
-                              case Some(token) => token
-                              case None                       =>
-                                try {
-                                  absTokens.values.filter { absToken =>
-                                    val srcPos = lookupPair(absToken.line, absToken.column)
-                                    scala >= srcPos && scala <= srcPos + absToken.length
-                                  }.toList.apply(0)
-                                } catch {
-                                  case _: Throwable => idk
+                        val twirlLines = path.readText.split("\n", -1)
+                        val twirlLineOffsets = twirlLines.scanLeft(0)((offset, line) => offset + line.length + 1)
+
+                        def lookupTwirlChar(char: Int): (Int, Int) = {
+                          val line = twirlLineOffsets.lastIndexWhere(_ <= char)
+                          val column = char - twirlLineOffsets(line)
+                          (line, column)
+                        }
+
+                      scribe.info(s"twirlLineOffsets first 20: ${twirlLineOffsets.take(20).toList}")
+                      scribe.info(s"[twirl][semanticTokens] LOOKKOKOIRTJG[IJPRWETGHIETHG[JG245]] lookupTwirlChar=[${lookupTwirlChar(610)}]")
+
+                        absTokens
+                          .values
+                          .map { absToken =>
+                            matrix.map {
+                              // these are positions from the MATRIX, which are raw char positions from the respective files
+                              case (scala, twirl, length) =>
+                                // scribe.info(s"[twirl][semanticTokens][matrixMapper] got data from matrix: [$scala, $twirl, $length]")
+                                val (scalaLine, scalaCol) = lookupChar(scala)
+                                val srcPos = lookupPair(absToken.line, absToken.column)
+                                if (
+                                  scala >= srcPos && scala <= srcPos + length
+                                ) {
+                                  scribe.info(s"[MATRIX MAPPER] got scalaSemanticToken $absToken")
+                                  val (twirlLine, twirlCol) = lookupTwirlChar(twirl)
+                                  val twirlToken = AbsoluteToken(
+                                    line = twirlLine + 1,
+                                    column = twirlCol,
+                                    length,
+                                    tokenType = absToken.tokenType,
+                                    tokenModifier = absToken.tokenModifier
+                                  )
+                                  twirlTokens.append(twirlToken)
                                 }
                             }
-                            scribe.info(s"[MATRIX MAPPER] got scalaSemanticToken $scalaSemanticToken")
-                            val (twirlLine, twirlCol) = lookupChar(twirl)
-                            val twirlToken = AbsoluteToken(
-                              line = twirlLine,
-                              column = twirlCol,
-                              length = scalaSemanticToken.length,
-                              tokenType = scalaSemanticToken.tokenType,
-                              tokenModifier = scalaSemanticToken.tokenModifier
-                            )
-                            twirlTokens.append(twirlToken)
-                        }
+                          }
                         scribe.info(s"[twirl][twirlTokenDump]<<<<<<\n${twirlTokens.grouped(5).map(g=>"["+g.toList.mkString(", ")+"]").mkString("\n")}")
                         val unnamed = twirlTokens
                           .sortBy(t => (t.line, t.column))
