@@ -69,6 +69,7 @@ import org.eclipse.lsp4j.jsonrpc.messages.{Either => JEither}
 import org.eclipse.lsp4j.{Position => LspPosition}
 import org.eclipse.lsp4j.{Range => LspRange}
 import org.eclipse.lsp4j.{debug => d}
+import play.twirl.compiler.TwirlCompiler
 
 /**
  * Manages lifecycle for presentation compilers in all build targets.
@@ -557,7 +558,80 @@ class Compilers(
     if (!userConfig().enableSemanticHighlighting) {
       Future { new SemanticTokens(emptyTokens) }
     } else if (path.isTwirlTemplate) {
-      Future { new SemanticTokens(emptyTokens) }
+      buffers.get(path) match {
+        case Some(twirl) => {
+          val twirlFile = Input.VirtualFile(path.toNIO.toString(), twirl)
+          val (vFile, /*twirl->scala*/ _, adjustments) =
+            TwirlAdjustments(twirlFile, "2.13.0")
+          scribe.info(
+            s"[twirl] Compiling Twirl source: [$twirl]"
+          )
+          loadCompiler(path).map { compiler =>
+            val defaultPlayImports: Seq[String] = Seq(
+              "models._", "controllers._", "play.api.i18n._", "views.html._",
+              "play.api.templates.PlayMagic._", "play.api.mvc._",
+              "play.api.data._",
+            )
+
+            // temp duplication
+            def playImports(
+                originalImports: Seq[String],
+                playVersion: Option[String],
+            ): Seq[String] =
+              if (playVersion.isDefined) originalImports ++ defaultPlayImports
+              else originalImports
+
+            val compiled =
+              TwirlCompiler
+                .compileVirtual(
+                  content = twirl,
+                  source = path.toFile,
+                  sourceDirectory = path.toNIO.getParent.toFile,
+                  resultType = "play.twirl.api.HtmlFormat.Appendable",
+                  formatterType = "play.twirl.api.Html",
+                  additionalImports = playImports(
+                    TwirlCompiler.defaultImports(compiler.scalaVersion()),
+                    Option("x.x.x"),
+                  ),
+                  // constructorAnnotations = playDI(playVersion),
+                  // codec = Codec(
+                  //   scala.util.Properties.sourceEncoding
+                  // ),
+                  // scalaVersion = Some(scalaVersion),
+                  inclusiveDot = true,
+                )
+            scribe.info(
+              s"[twirl] Compiled twirl source: [${compiled._content}]"
+            )
+
+            scribe.info(
+              s"[twirl][semanticTokens] => using URI: [${URI.create(twirlFile.path)}]"
+            )
+
+            val vFileParams = CompilerVirtualFileParams(
+              uri = URI.create(twirlFile.path),
+              text = compiled._content,
+              token,
+              outlineFilesProvider.getOutlineFiles(compiler.buildTargetId()),
+            )
+            scribe.info(s"[twirl] vFileParams: [$vFileParams]")
+            scribe.info(
+              s"[twirl] GETTING SEMANTIC TOKENS FOR: [${vFileParams.text}]"
+            )
+            val tokens = compiler
+              .semanticTokens(vFileParams)
+              .get
+
+            scribe.info(
+              s"[twirl][semanticTokens] => nodes received: [$tokens]"
+            )
+          }
+
+          Future { new SemanticTokens(emptyTokens) }
+        }
+        case None =>
+          Future { new SemanticTokens(emptyTokens) }
+      }
     } else {
       loadCompiler(path)
         .map { compiler =>
