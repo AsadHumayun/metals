@@ -1,45 +1,41 @@
+import java.io.FileWriter
+import scala.meta.io.AbsolutePath
+import java.nio.file.Paths
 import play.twirl.compiler.TwirlCompiler
+import scala.meta.inputs.Input
+import scala.meta.internal.metals.TwirlAdjustments
+import org.eclipse.lsp4j.{Range => LspRange, Position}
 
 import java.io.File
 
 // Sample code from a simple view in WebJars
-val code = """
-@this(webJarsUtil: org.webjars.play.WebJarsUtil, main: main)
 
-@(webjarsOrError: Either[Iterable[WebJar], String])
+val path =
+  Paths.get(System.getProperty("user.dir"))
+  .getParent
+  .resolve("webjars")
+  .resolve("app")
+  .resolve("views")
+  .resolve("index.scala.html").toAbsolutePath
 
-@main(title = "WebJars - Web Libraries in Jars") {
-    <!-- Scripts -->
-    <script defer src="@routes.Assets.versioned("javascripts/index.js")"></script>
-    @webJarsUtil.locate("jquery.typewatch", "jquery.typewatch.js").script()
+// simulates a twirl template that was (ideally) taken from buffers.get(...)
+val codeFromBuffer = scala.io.Source.fromFile(path.toFile).mkString
 
-    <!-- Content -->
-    <div class="home-bg">
-        <!-- Hero -->
-        @sections.hero()
+// where to write the compiled vFile contents to (for debugging)
+val outPath =
+  Paths.get(System.getProperty("user.dir"))
+  .resolve("index.compiled.template.scala")
+  .toFile
 
-        <!-- Popular WebJars -->
-        @sections.popular(webjarsOrError)
-    </div>
+val twirlFile = Input.VirtualFile(path.toUri.toString, codeFromBuffer)
+val (vFile, /*twirl->scala*/_, adjustments) = TwirlAdjustments(twirlFile, "2.13.0")
 
-    <!-- Modals -->
-    @partials.fileListModal()
+// Write compiled file output for debugging/checking src positions between scala<->twirl
+val writer = new FileWriter(outPath)
+writer.write(vFile.value)
+writer.close()
 
-    @partials.newWebJarModal()
-}
-"""
+val scalaRange = new LspRange(new Position(20, 43), new Position(20, 43 + 55))
 
-val target = new File(
-  "/Users/w/Documents/git/webjars/app/views/index.scala.html"
-)
-val targetDir = new File("/Users/w/Documents/git/webjars/app/views/")
-
-TwirlCompiler
-  .compileVirtual(
-    content = code,
-    target,
-    targetDir,
-    resultType = "play.twirl.api.HtmlFormat.Appendable",
-    formatterType = "play.twirl.api.HtmlFormat.type",
-  )
-  ._content
+adjustments.adjustRange(scalaRange)
+adjustments.adjustPos(new Position(12, 40))
