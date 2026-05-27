@@ -801,6 +801,12 @@ class Compilers(
                         tokenModifier,
                       )
                     }
+                    val twirlFile = Input.VirtualFile(
+                      path.toNIO.toUri.toString,
+                      buffers.get(path).get,
+                    )
+                    val adjustments =
+                      TwirlAdjustments(twirlFile, compiler.scalaVersion())
                     val absTokens: Map[(Int, Int), AbsoluteToken] = tokens
                       .grouped(5)
                       //      Line, Char, AbsToken (delta decoded semantic token)
