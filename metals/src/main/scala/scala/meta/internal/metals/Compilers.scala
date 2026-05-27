@@ -69,6 +69,7 @@ import org.eclipse.lsp4j.jsonrpc.messages.{Either => JEither}
 import org.eclipse.lsp4j.{Position => LspPosition}
 import org.eclipse.lsp4j.{Range => LspRange}
 import org.eclipse.lsp4j.{debug => d}
+import scala.collection.mutable.ListBuffer
 
 /**
  * Manages lifecycle for presentation compilers in all build targets.
@@ -557,7 +558,21 @@ class Compilers(
     if (!userConfig().enableSemanticHighlighting) {
       Future { new SemanticTokens(emptyTokens) }
     } else if (path.isTwirlTemplate) {
-      Future { new SemanticTokens(emptyTokens) }
+      import play.twirl.parser.TwirlParser
+
+      buffers.get(path) match {
+        case Some(twirl) =>
+          val scalaFragments = ListBuffer.empty[String]
+          val parser = new TwirlParser(shouldParseInclusiveDot = true)
+
+          parser.parse(twirl) match {
+            case parser.Success(template, input) => ???
+            case _ =>
+              Future { new SemanticTokens(emptyTokens) }
+          }
+        case None =>
+          Future { new SemanticTokens(emptyTokens) }
+      }
     } else {
       loadCompiler(path)
         .map { compiler =>
