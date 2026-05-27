@@ -554,7 +554,9 @@ class Compilers(
   ): Future[SemanticTokens] = {
     val path = params.getTextDocument.getUri.toAbsolutePath
     val emptyTokens = ju.Collections.emptyList[Integer]();
-    if (!userConfig().enableSemanticHighlighting || path.isTwirlTemplate) {
+    if (!userConfig().enableSemanticHighlighting) {
+      Future { new SemanticTokens(emptyTokens) }
+    } else if (path.isTwirlTemplate) {
       Future { new SemanticTokens(emptyTokens) }
     } else {
       loadCompiler(path)
