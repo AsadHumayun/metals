@@ -480,7 +480,8 @@ lazy val metals = project
       // "com.fasterxml.jackson.core" % "jackson-databind" % "2.22.0",
       "io.undertow" % "undertow-servlet" % "2.3.12.Final",
       // For Twirl
-      "org.playframework.twirl" %% "twirl-compiler" % "2.0.9",
+      "org.playframework.twirl" %% "twirl-compiler" % "2.1.0-M8",
+      "org.playframework.twirl" %% "twirl-parser" % "2.1.0-M8",
     ),
     // Force correct version of json-schema-validator for MCP SDK 2.0
     // dependencyOverrides += "com.networknt" % "json-schema-validator" % "2.0.0",
