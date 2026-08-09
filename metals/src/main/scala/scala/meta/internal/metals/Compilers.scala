@@ -1,59 +1,75 @@
 package scala.meta.internal.metals
 
-import ch.epfl.scala.bsp4j.{BuildTargetIdentifier, CompileReport}
-import com.google.common.cache.{
-  CacheBuilder,
-  RemovalListener,
-  RemovalNotification,
-}
-import org.eclipse.lsp4j.{
-  CompletionItem,
-  CompletionItemKind,
-  CompletionList,
-  CompletionParams,
-  Diagnostic,
-  DocumentHighlight,
-  InitializeParams,
-  InlayHint,
-  InlayHintKind,
-  InlayHintParams,
-  ReferenceParams,
-  RenameParams,
-  SelectionRange,
-  SelectionRangeParams,
-  SemanticTokens,
-  SemanticTokensParams,
-  SignatureHelp,
-  TextDocumentIdentifier,
-  TextDocumentPositionParams,
-  TextEdit,
-  Position as LspPosition,
-  Range as LspRange,
-  debug as d,
-}
-import org.eclipse.lsp4j.jsonrpc.messages.Either as JEither
-
 import java.net.URI
-import java.nio.file.{Path, Paths}
-import java.util as ju
+import java.nio.file.Path
+import java.nio.file.Paths
 import java.util.concurrent.ScheduledExecutorService
-import scala.annotation.{nowarn, tailrec}
+import java.{util => ju}
+
+import scala.annotation.nowarn
+import scala.annotation.tailrec
 import scala.collection.concurrent.TrieMap
 import scala.collection.mutable.ListBuffer
-import scala.concurrent.{ExecutionContextExecutorService, Future}
-import scala.meta.inputs.{Input, Position}
+import scala.concurrent.ExecutionContextExecutorService
+import scala.concurrent.Future
+import scala.util.control.NonFatal
+
+import scala.meta.inputs.Input
+import scala.meta.inputs.Position
 import scala.meta.internal
 import scala.meta.internal.builds.SbtBuildTool
+import scala.meta.internal.metals.CompilerOffsetParamsUtils
+import scala.meta.internal.metals.CompilerRangeParamsUtils
 import scala.meta.internal.metals.Compilers.PresentationCompilerKey
-import scala.meta.internal.metals.MetalsEnrichments.*
+import scala.meta.internal.metals.MetalsEnrichments._
 import scala.meta.internal.mtags.MD5
 import scala.meta.internal.parsing.Trees
-import scala.meta.internal.pc.{LogMessages, PcSymbolInformation}
-import scala.meta.internal.semanticdb as s
-import scala.meta.internal.worksheets.{WorksheetPcData, WorksheetProvider}
+import scala.meta.internal.pc.LogMessages
+import scala.meta.internal.pc.PcSymbolInformation
+import scala.meta.internal.worksheets.WorksheetPcData
+import scala.meta.internal.worksheets.WorksheetProvider
+import scala.meta.internal.{semanticdb => s}
 import scala.meta.io.AbsolutePath
-import scala.meta.pc.*
-import scala.util.control.NonFatal
+import scala.meta.pc.AutoImportsResult
+import scala.meta.pc.CancelToken
+import scala.meta.pc.CodeActionId
+import scala.meta.pc.CompletionItemPriority
+import scala.meta.pc.HoverSignature
+import scala.meta.pc.OffsetParams
+import scala.meta.pc.PresentationCompiler
+import scala.meta.pc.SymbolSearch
+import scala.meta.pc.SyntheticDecorationsParams
+import scala.meta.pc.VirtualFileParams
+
+import ch.epfl.scala.bsp4j.BuildTargetIdentifier
+import ch.epfl.scala.bsp4j.CompileReport
+import com.google.common.cache.CacheBuilder
+import com.google.common.cache.RemovalListener
+import com.google.common.cache.RemovalNotification
+import org.eclipse.lsp4j.CompletionItem
+import org.eclipse.lsp4j.CompletionItemKind
+import org.eclipse.lsp4j.CompletionList
+import org.eclipse.lsp4j.CompletionParams
+import org.eclipse.lsp4j.Diagnostic
+import org.eclipse.lsp4j.DocumentHighlight
+import org.eclipse.lsp4j.InitializeParams
+import org.eclipse.lsp4j.InlayHint
+import org.eclipse.lsp4j.InlayHintKind
+import org.eclipse.lsp4j.InlayHintParams
+import org.eclipse.lsp4j.ReferenceParams
+import org.eclipse.lsp4j.RenameParams
+import org.eclipse.lsp4j.SelectionRange
+import org.eclipse.lsp4j.SelectionRangeParams
+import org.eclipse.lsp4j.SemanticTokens
+import org.eclipse.lsp4j.SemanticTokensParams
+import org.eclipse.lsp4j.SignatureHelp
+import org.eclipse.lsp4j.TextDocumentIdentifier
+import org.eclipse.lsp4j.TextDocumentPositionParams
+import org.eclipse.lsp4j.TextEdit
+import org.eclipse.lsp4j.jsonrpc.messages.{Either => JEither}
+import org.eclipse.lsp4j.{Position => LspPosition}
+import org.eclipse.lsp4j.{Range => LspRange}
+import org.eclipse.lsp4j.{debug => d}
 
 /**
  * Manages lifecycle for presentation compilers in all build targets.
